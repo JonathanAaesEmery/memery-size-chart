@@ -1,3 +1,4 @@
+import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useSubmit, useNavigation, useActionData, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -442,8 +443,6 @@ function AddColumnForm({ submit, busy }: any) {
   );
 }
 
-// We need React for useState/useRef
-import React from "react";
 
 // ─── Styles ─────────────────────────────────────────────────────────────────────
 

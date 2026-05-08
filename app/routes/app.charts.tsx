@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation } from "react-router";
+import { useLoaderData, useNavigation, Form, Link } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -43,103 +43,78 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
-  const submit = useSubmit();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
 
-  const handleDelete = (id: string, title: string) => {
-    if (confirm(`Delete "${title}"? This cannot be undone.`)) {
-      submit({ intent: "delete", id }, { method: "POST" });
-    }
-  };
-
-  const handleToggle = (id: string) => {
-    submit({ intent: "toggle", id }, { method: "POST" });
-  };
-
   return (
-    <s-page heading="Size Charts">
-      <s-button slot="primary-action" href="/app/charts/new">
-        Create chart
-      </s-button>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>Size Charts</h1>
+        <Link to="/app/charts/new" style={btnPrimaryStyle}>+ Opret nyt chart</Link>
+      </div>
 
       {charts.length === 0 ? (
-        <s-section>
-          <s-paragraph>
-            No size charts yet. Create your first chart to get started.
-          </s-paragraph>
-          <s-button href="/app/charts/new">Create your first chart</s-button>
-        </s-section>
+        <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, padding: "40px 24px", textAlign: "center" }}>
+          <p style={{ color: "#6d7175", marginBottom: 16 }}>Ingen size charts endnu. Opret dit første chart.</p>
+          <Link to="/app/charts/new" style={btnPrimaryStyle}>Opret dit første chart</Link>
+        </div>
       ) : (
-        <s-section>
-          <s-data-table
-            headings={JSON.stringify(["Title", "Status", "Mappings", "Actions"])}
-            rows={JSON.stringify(
-              charts.map((chart) => [
-                chart.title,
-                chart.isActive ? "Active" : "Inactive",
-                `${chart._count.productMappings} products`,
-                "",
-              ])
-            )}
-          />
-          <div style={{ marginTop: "16px" }}>
-            {charts.map((chart) => (
-              <div
-                key={chart.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "12px 0",
-                  borderBottom: "1px solid #e1e3e5",
-                }}
-              >
-                <div>
-                  <strong>{chart.title}</strong>
-                  <span
-                    style={{
-                      marginLeft: "8px",
-                      padding: "2px 8px",
-                      borderRadius: "12px",
-                      fontSize: "12px",
-                      backgroundColor: chart.isActive ? "#d4edda" : "#f8d7da",
-                      color: chart.isActive ? "#155724" : "#721c24",
-                    }}
-                  >
-                    {chart.isActive ? "Active" : "Inactive"}
-                  </span>
-                  <span style={{ marginLeft: "8px", color: "#6d7175", fontSize: "13px" }}>
-                    {chart._count.productMappings} product{chart._count.productMappings !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <s-button variant="tertiary" href={`/app/charts/${chart.id}`}>
-                    Edit
-                  </s-button>
-                  <s-button
-                    variant="tertiary"
-                    onClick={() => handleToggle(chart.id)}
-                    disabled={isLoading}
-                  >
-                    {chart.isActive ? "Deactivate" : "Activate"}
-                  </s-button>
-                  <s-button
-                    variant="tertiary"
-                    tone="critical"
-                    onClick={() => handleDelete(chart.id, chart.title)}
-                    disabled={isLoading}
-                  >
-                    Delete
-                  </s-button>
-                </div>
+        <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
+          {charts.map((chart, i) => (
+            <div
+              key={chart.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "14px 20px",
+                borderBottom: i < charts.length - 1 ? "1px solid #e1e3e5" : "none",
+                background: "#fff",
+              }}
+            >
+              <div>
+                <strong style={{ fontSize: 15 }}>{chart.title}</strong>
+                <span style={{
+                  marginLeft: 10,
+                  padding: "2px 8px",
+                  borderRadius: 10,
+                  fontSize: 12,
+                  background: chart.isActive ? "#d4edda" : "#f8d7da",
+                  color: chart.isActive ? "#155724" : "#721c24",
+                }}>
+                  {chart.isActive ? "Aktiv" : "Inaktiv"}
+                </span>
+                <span style={{ marginLeft: 10, color: "#6d7175", fontSize: 13 }}>
+                  {chart._count.productMappings} produkt{chart._count.productMappings !== 1 ? "er" : ""}
+                </span>
               </div>
-            ))}
-          </div>
-        </s-section>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <Link to={`/app/charts/${chart.id}`} style={btnSecondaryStyle}>Rediger</Link>
+                <Form method="post" style={{ display: "inline" }}>
+                  <input type="hidden" name="intent" value="toggle" />
+                  <input type="hidden" name="id" value={chart.id} />
+                  <button type="submit" style={btnSecondaryStyle} disabled={isLoading}>
+                    {chart.isActive ? "Deaktivér" : "Aktivér"}
+                  </button>
+                </Form>
+                <Form method="post" style={{ display: "inline" }} onSubmit={(e) => { if (!confirm(`Slet "${chart.title}"?`)) e.preventDefault(); }}>
+                  <input type="hidden" name="intent" value="delete" />
+                  <input type="hidden" name="id" value={chart.id} />
+                  <button type="submit" style={btnDangerStyle} disabled={isLoading}>Slet</button>
+                </Form>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
-    </s-page>
+    </div>
   );
 }
+
+const btnPrimaryStyle: React.CSSProperties = { background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer", textDecoration: "none", display: "inline-block" };
+const btnSecondaryStyle: React.CSSProperties = { background: "#fff", color: "#1a1a1a", border: "1px solid #c9cccf", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer", textDecoration: "none", display: "inline-block" };
+const btnDangerStyle: React.CSSProperties = { background: "#fff", color: "#d72c0d", border: "1px solid #ffa8a0", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer" };
+
+import React from "react";
 
 export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);
