@@ -1,39 +1,44 @@
 import React from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, useRouteError, NavLink, useSearchParams } from "react-router";
+import { Outlet, useRouteError, NavLink, useSearchParams, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { AppProvider } from "@shopify/shopify-app-react-router/react";
+import { authenticate } from "../shopify.server";
 
-export const loader = async (_: LoaderFunctionArgs) => {
-  return null;
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  await authenticate.admin(request);
+  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
 export default function App() {
+  const { apiKey } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
 
-  // These params must survive every navigation so authenticate.admin() can find the shop.
   const shop = searchParams.get("shop") || "";
   const host = searchParams.get("host") || "";
   const qs = [shop && `shop=${shop}`, host && `host=${host}`].filter(Boolean).join("&");
   const p = (path: string) => (qs ? `${path}?${qs}` : path);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f6f6f7", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
-      <nav style={{
-        background: "#fff",
-        borderBottom: "1px solid #e1e3e5",
-        padding: "0 20px",
-        display: "flex",
-        gap: 4,
-        alignItems: "center",
-        height: 52,
-      }}>
-        <NavLink to={p("/app/charts")} style={navLinkStyle}>Size Charts</NavLink>
-        <NavLink to={p("/app/mappings")} style={navLinkStyle}>Product Mappings</NavLink>
-        <NavLink to={p("/app/fallbacks")} style={navLinkStyle}>Fallback Rules</NavLink>
-        <NavLink to={p("/app/settings")} style={navLinkStyle}>Settings</NavLink>
-      </nav>
-      <Outlet />
-    </div>
+    <AppProvider embedded apiKey={apiKey}>
+      <div style={{ minHeight: "100vh", background: "#f6f6f7", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+        <nav style={{
+          background: "#fff",
+          borderBottom: "1px solid #e1e3e5",
+          padding: "0 20px",
+          display: "flex",
+          gap: 4,
+          alignItems: "center",
+          height: 52,
+        }}>
+          <NavLink to={p("/app/charts")} style={navLinkStyle}>Size Charts</NavLink>
+          <NavLink to={p("/app/mappings")} style={navLinkStyle}>Product Mappings</NavLink>
+          <NavLink to={p("/app/fallbacks")} style={navLinkStyle}>Fallback Rules</NavLink>
+          <NavLink to={p("/app/settings")} style={navLinkStyle}>Settings</NavLink>
+        </nav>
+        <Outlet />
+      </div>
+    </AppProvider>
   );
 }
 

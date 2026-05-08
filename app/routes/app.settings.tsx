@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useNavigation, useActionData } from "react-router";
+import { useLoaderData, useActionData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -51,13 +51,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function SettingsPage() {
   const { buttonText, buttonColor, defaultUnit } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
-
   return (
     <s-page heading="Settings">
       {actionData?.success && (
-        <s-banner tone="success" style={{ marginBottom: "16px" }}>
+        <s-banner tone="success">
           Settings saved.
         </s-banner>
       )}
@@ -118,7 +115,7 @@ export default function SettingsPage() {
               </select>
             </div>
             <div>
-              <s-button submit disabled={isLoading}>Save settings</s-button>
+              <button type="submit" style={{ background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Save settings</button>
             </div>
           </div>
         </form>
