@@ -20,7 +20,7 @@ export default function App() {
   const p = (path: string) => (qs ? `${path}?${qs}` : path);
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
+    <AppProvider embedded={false}>
       <div style={{ minHeight: "100vh", background: "#f6f6f7", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
         <nav style={{
           background: "#fff",
