@@ -1,6 +1,7 @@
 api_version = "2024-10"
 
 [[extensions]]
+uid = "b62546a3-914a-48d5-ef6d-e5776bf795b4cd976667"
 type = "theme"
 name = "Size Chart Button"
 handle = "size-chart-button"

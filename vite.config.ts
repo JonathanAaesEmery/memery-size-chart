@@ -39,7 +39,9 @@ export default defineConfig({
   server: {
     allowedHosts: [host],
     cors: {
-      preflightContinue: true,
+      origin: "*",
+      methods: ["GET", "POST", "OPTIONS"],
+      allowedHeaders: ["Authorization", "Content-Type"],
     },
     port: Number(process.env.PORT || 3000),
     hmr: hmrConfig,

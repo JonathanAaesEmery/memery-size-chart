@@ -2,7 +2,7 @@
 
 client_id = "f76a18b0c4555f491759b412d36f9e60"
 name = "memery-size-chart"
-application_url = "https://example.com"
+application_url = "https://memery-size-chart-production.up.railway.app"
 embedded = true
 
 [build]
@@ -10,7 +10,7 @@ automatically_update_urls_on_dev = true
 include_config_on_deploy = true
 
 [webhooks]
-api_version = "2026-07"
+api_version = "2026-04"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
@@ -21,8 +21,10 @@ api_version = "2026-07"
   uri = "/webhooks/app/scopes_update"
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_products"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [
+  "https://memery-size-chart-production.up.railway.app/api/auth",
+  "https://memery-size-chart-production.up.railway.app/auth/callback"
+]
