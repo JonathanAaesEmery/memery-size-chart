@@ -1,5 +1,5 @@
 {% comment %}
-  Size Chart Button — loads chart in a modal via iframe
+  Size Chart Button — modal med CM/IN toggle, måle-input og recommendation engine
 {% endcomment %}
 
 {% assign app_url = app.url %}
@@ -38,46 +38,53 @@
       inset: 0;
       background: rgba(0,0,0,0.5);
       z-index: 9999;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
       padding: 16px;
+      overflow-y: auto;
     "
   >
     <div style="
       background: #fff;
       border-radius: 8px;
       width: 100%;
-      max-width: 640px;
-      max-height: 90vh;
+      max-width: 680px;
+      margin: auto;
       display: flex;
       flex-direction: column;
       overflow: hidden;
     ">
+      <!-- Modal header -->
       <div style="
         display: flex;
         justify-content: space-between;
         align-items: center;
         padding: 16px 20px;
         border-bottom: 1px solid #e1e3e5;
+        position: sticky;
+        top: 0;
+        background: #fff;
+        z-index: 1;
       ">
-        <strong style="font-size: 16px;">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
-        <button
-          id="size-chart-close-{{ block.id }}"
-          type="button"
-          style="
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 20px;
-            line-height: 1;
-            color: #6d7175;
-            padding: 4px;
-          "
-          aria-label="Close"
-        >✕</button>
+        <strong id="size-chart-title-{{ block.id }}" style="font-size: 16px;">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <!-- CM/IN toggle -->
+          <div id="size-chart-unit-toggle-{{ block.id }}" style="display:none; background:#f1f1f1; border-radius:20px; padding:2px; display:none; align-items:center;">
+            <button id="size-chart-cm-btn-{{ block.id }}" type="button" style="border:none;cursor:pointer;border-radius:18px;padding:4px 12px;font-size:12px;font-weight:600;background:#000;color:#fff;transition:all 0.15s;">cm</button>
+            <button id="size-chart-in-btn-{{ block.id }}" type="button" style="border:none;cursor:pointer;border-radius:18px;padding:4px 12px;font-size:12px;font-weight:600;background:transparent;color:#555;transition:all 0.15s;">in</button>
+          </div>
+          <button
+            id="size-chart-close-{{ block.id }}"
+            type="button"
+            style="background:none;border:none;cursor:pointer;font-size:20px;line-height:1;color:#6d7175;padding:4px;"
+            aria-label="Luk"
+          >✕</button>
+        </div>
       </div>
+
+      <!-- Modal body -->
       <div id="size-chart-body-{{ block.id }}" style="overflow-y: auto; padding: 20px; flex: 1;">
-        <p style="color: #6d7175; font-size: 14px;">Loading...</p>
+        <p style="color:#6d7175;font-size:14px;">Loader...</p>
       </div>
     </div>
   </div>
@@ -98,18 +105,54 @@
   var modal = document.getElementById('size-chart-modal-' + blockId);
   var closeBtn = document.getElementById('size-chart-close-' + blockId);
   var body = document.getElementById('size-chart-body-' + blockId);
+  var unitToggle = document.getElementById('size-chart-unit-toggle-' + blockId);
+  var cmBtn = document.getElementById('size-chart-cm-btn-' + blockId);
+  var inBtn = document.getElementById('size-chart-in-btn-' + blockId);
+  var titleEl = document.getElementById('size-chart-title-' + blockId);
 
-  if (!appUrl) {
-    btn.style.display = 'none';
-    return;
-  }
+  if (!appUrl) { btn.style.display = 'none'; return; }
 
   var loaded = false;
+  var currentUnit = 'cm';
+  var chartData = null;
+  var CM_TO_IN = 0.393701;
 
+  // ── Unit toggle ────────────────────────────────────────────────
+  function setUnit(unit) {
+    currentUnit = unit;
+    if (unit === 'cm') {
+      cmBtn.style.background = '#000'; cmBtn.style.color = '#fff';
+      inBtn.style.background = 'transparent'; inBtn.style.color = '#555';
+    } else {
+      inBtn.style.background = '#000'; inBtn.style.color = '#fff';
+      cmBtn.style.background = 'transparent'; cmBtn.style.color = '#555';
+    }
+    if (chartData) rebuildTable();
+  }
+
+  cmBtn.addEventListener('click', function() { setUnit('cm'); });
+  inBtn.addEventListener('click', function() { setUnit('in'); });
+
+  // ── Value conversion ───────────────────────────────────────────
+  function toDisplay(val) {
+    if (val == null) return '';
+    var num = parseFloat(val);
+    if (isNaN(num)) return val;
+    if (currentUnit === 'in') return (num * CM_TO_IN).toFixed(1);
+    return num % 1 === 0 ? String(num) : num.toFixed(1);
+  }
+
+  function fromInput(val) {
+    var num = parseFloat(val);
+    if (isNaN(num)) return null;
+    if (currentUnit === 'in') return num / CM_TO_IN;
+    return num;
+  }
+
+  // ── Load ───────────────────────────────────────────────────────
   function loadChart() {
     if (loaded) return;
     loaded = true;
-
     var tagsEncoded = productTags.split(',').map(function(t) { return encodeURIComponent(t.trim()); }).join(',');
     var url = appUrl + '/api/size-chart?shop=' + shop
       + '&product_handle=' + encodeURIComponent(productHandle)
@@ -121,67 +164,242 @@
     fetch(url)
       .then(function(r) { return r.json(); })
       .then(function(data) {
-        if (!data.chart) {
-          btn.style.display = 'none';
-          return;
+        if (!data.chart) { btn.style.display = 'none'; return; }
+        chartData = data.chart;
+        if (chartData.title) titleEl.textContent = chartData.title;
+
+        var hasMeasurements = (chartData.columns || []).some(function(c) { return c.columnType === 'measurement'; });
+        if (hasMeasurements) {
+          unitToggle.style.display = 'flex';
         }
-        renderChart(data.chart, data.settings || {});
+
+        renderAll();
       })
       .catch(function(err) {
-        body.innerHTML = '<p style="color:#d72c0d;font-size:14px;">Could not load size chart (' + err.message + ')</p>';
+        body.innerHTML = '<p style="color:#d72c0d;font-size:14px;">Kunne ikke loade størrelsesguide (' + err.message + ')</p>';
       });
   }
 
-  function renderChart(chart, settings) {
+  // ── Main render ────────────────────────────────────────────────
+  function renderAll() {
+    var chart = chartData;
     var html = '';
 
     if (chart.description) {
-      html += '<p style="margin:0 0 16px;color:#6d7175;font-size:14px;">' + escapeHtml(chart.description) + '</p>';
+      html += '<p style="margin:0 0 16px;color:#6d7175;font-size:14px;">' + esc(chart.description) + '</p>';
     }
 
+    // Input section (if any column has customerInputEnabled)
+    var inputCols = (chart.columns || []).filter(function(c) { return c.customerInputEnabled; });
+    if (inputCols.length > 0) {
+      html += buildInputSection(inputCols, chart.chartType);
+    }
+
+    // Result section (placeholder, filled by JS after recommendation)
+    html += '<div id="sc-result-' + blockId + '" style="margin-bottom:16px;"></div>';
+
+    // Size table
     if (chart.columns && chart.columns.length > 0 && chart.rows && chart.rows.length > 0) {
-      var unit = settings.default_unit || chart.defaultUnit || 'cm';
-      html += '<div style="overflow-x:auto;">';
-      html += '<table style="border-collapse:collapse;width:100%;font-size:13px;">';
-      html += '<thead><tr>';
-      chart.columns.forEach(function(col) {
-        html += '<th style="padding:8px 12px;border:1px solid #e1e3e5;background:#f6f6f7;text-align:left;white-space:nowrap;">';
-        html += escapeHtml(col.name);
-        if (col.columnType === 'measurement') html += ' <span style="color:#6d7175;font-weight:normal;">(' + unit + ')</span>';
-        html += '</th>';
-      });
-      html += '</tr></thead><tbody>';
-      chart.rows.forEach(function(row) {
-        html += '<tr>';
-        chart.columns.forEach(function(col) {
-          var cell = (row.cells || []).find(function(c) { return c.columnId === col.id; });
-          html += '<td style="padding:8px 12px;border:1px solid #e1e3e5;">' + escapeHtml((cell && cell.value) || '') + '</td>';
-        });
-        html += '</tr>';
-      });
-      html += '</tbody></table></div>';
+      html += buildTable(chart, null);
     }
 
     if (chart.instructionsHtml) {
-      html += '<div style="margin-top:16px;font-size:13px;color:#6d7175;">' + chart.instructionsHtml + '</div>';
+      html += '<div style="margin-top:20px;font-size:13px;color:#6d7175;line-height:1.6;">' + chart.instructionsHtml + '</div>';
     }
 
-    body.innerHTML = html || '<p style="color:#6d7175;font-size:14px;">No size data available.</p>';
+    body.innerHTML = html;
+
+    // Wire up the find-size button
+    var findBtn = document.getElementById('sc-find-btn-' + blockId);
+    if (findBtn) {
+      findBtn.addEventListener('click', function() { runRecommendation(); });
+    }
   }
 
-  function escapeHtml(str) {
+  // Rebuild only the table (called on unit toggle)
+  function rebuildTable() {
+    var placeholder = document.getElementById('sc-table-' + blockId);
+    if (!placeholder || !chartData) return;
+    var highlightRow = placeholder.getAttribute('data-highlight');
+    placeholder.outerHTML = buildTable(chartData, highlightRow ? parseInt(highlightRow, 10) : null);
+  }
+
+  // ── Input section ──────────────────────────────────────────────
+  function buildInputSection(inputCols, chartType) {
+    var unitLabel = currentUnit === 'cm' ? 'cm' : 'in';
+    var html = '<div style="background:#f9f9f9;border:1px solid #e1e3e5;border-radius:8px;padding:16px;margin-bottom:20px;">';
+    html += '<p style="margin:0 0 12px;font-weight:600;font-size:14px;">Find din størrelse</p>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">';
+
+    inputCols.forEach(function(col) {
+      var label = col.inputLabel || col.name;
+      html += '<div style="display:flex;flex-direction:column;gap:4px;min-width:120px;">';
+      html += '<label style="font-size:12px;color:#6d7175;" for="sc-input-' + blockId + '-' + col.id + '">' + esc(label) + ' (' + unitLabel + ')</label>';
+      html += '<input id="sc-input-' + blockId + '-' + col.id + '" data-col-id="' + col.id + '" type="number" min="0" step="0.1" placeholder="f.eks. ' + (col.columnType === 'measurement' && chartType === 'footwear' ? '26' : '88') + '" style="border:1px solid #ccc;border-radius:4px;padding:6px 10px;font-size:14px;width:100%;box-sizing:border-box;" />';
+      html += '</div>';
+    });
+
+    html += '<button id="sc-find-btn-' + blockId + '" type="button" style="background:#000;color:#fff;border:none;border-radius:4px;padding:8px 18px;font-size:14px;cursor:pointer;white-space:nowrap;align-self:flex-end;">Find størrelse</button>';
+    html += '</div></div>';
+    return html;
+  }
+
+  // ── Recommendation engine ──────────────────────────────────────
+  function runRecommendation() {
+    var chart = chartData;
+    if (!chart) return;
+
+    var inputCols = (chart.columns || []).filter(function(c) { return c.customerInputEnabled; });
+    var inputs = {};
+    var allFilled = true;
+
+    inputCols.forEach(function(col) {
+      var el = document.getElementById('sc-input-' + blockId + '-' + col.id);
+      if (el && el.value.trim() !== '') {
+        inputs[col.id] = fromInput(el.value);
+      } else {
+        allFilled = false;
+      }
+    });
+
+    if (Object.keys(inputs).length === 0) {
+      showResult(null, 'Indtast dine mål for at finde din størrelse.');
+      return;
+    }
+
+    var matchingKeyCols = (chart.columns || []).filter(function(c) { return c.isMatchingKey; });
+    var resultEl = document.getElementById('sc-result-' + blockId);
+
+    if (chart.chartType === 'footwear') {
+      // Footwear: find first input column, find row where value is in range
+      var firstInputColId = Object.keys(inputs)[0];
+      var customerVal = inputs[firstInputColId];
+      var bestRow = null;
+
+      for (var i = 0; i < chart.rows.length; i++) {
+        var row = chart.rows[i];
+        var cell = (row.cells || []).find(function(c) { return c.columnId === firstInputColId; });
+        if (cell && cell.minValue != null && cell.maxValue != null) {
+          if (customerVal >= cell.minValue && customerVal <= cell.maxValue) {
+            bestRow = row;
+            break;
+          }
+        }
+      }
+
+      if (bestRow) {
+        var sizeCols = matchingKeyCols.length > 0 ? matchingKeyCols : chart.columns.slice(0, 1);
+        var sizeLabels = sizeCols.map(function(col) {
+          var cell = (bestRow.cells || []).find(function(c) { return c.columnId === col.id; });
+          return esc(col.name) + ': <strong>' + esc((cell && cell.value) || '–') + '</strong>';
+        });
+        showResult(bestRow.id, 'Din størrelse er ' + sizeLabels.join(', '));
+      } else {
+        showResult(null, 'Ingen størrelse matcher de indtastede mål. Prøv et andet mål.');
+      }
+
+    } else {
+      // Apparel: Max Rule — score each row
+      var scores = chart.rows.map(function(row) {
+        var score = 0;
+        Object.keys(inputs).forEach(function(colId) {
+          var val = inputs[colId];
+          if (val == null) return;
+          var cell = (row.cells || []).find(function(c) { return c.columnId === colId; });
+          if (cell && cell.minValue != null && cell.maxValue != null) {
+            if (val >= cell.minValue && val <= cell.maxValue) score++;
+          }
+        });
+        return { row: row, score: score };
+      });
+
+      var maxScore = Math.max.apply(null, scores.map(function(s) { return s.score; }));
+
+      if (maxScore === 0) {
+        showResult(null, 'Ingen størrelse matcher præcist. Prøv at justere dine mål.');
+      } else {
+        // Among tied rows, pick the largest (last in order)
+        var best = scores.filter(function(s) { return s.score === maxScore; }).pop();
+        var sizeCols = matchingKeyCols.length > 0 ? matchingKeyCols : chart.columns.slice(0, 1);
+        var sizeLabels = sizeCols.map(function(col) {
+          var cell = (best.row.cells || []).find(function(c) { return c.columnId === col.id; });
+          return esc(col.name) + ': <strong>' + esc((cell && cell.value) || '–') + '</strong>';
+        });
+        var matchCount = Object.keys(inputs).length;
+        var note = maxScore < matchCount ? ' (' + maxScore + '/' + matchCount + ' mål passer)' : '';
+        showResult(best.row.id, 'Din anbefalede størrelse er ' + sizeLabels.join(', ') + note);
+      }
+    }
+  }
+
+  function showResult(highlightRowId, message) {
+    var resultEl = document.getElementById('sc-result-' + blockId);
+    if (resultEl) {
+      resultEl.innerHTML = '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:12px 16px;font-size:14px;color:#1b5e20;">' + message + '</div>';
+    }
+    // Re-render table with highlight
+    var tableEl = document.getElementById('sc-table-' + blockId);
+    if (tableEl && chartData) {
+      tableEl.outerHTML = buildTable(chartData, highlightRowId);
+    }
+  }
+
+  // ── Table builder ──────────────────────────────────────────────
+  function buildTable(chart, highlightRowId) {
+    var inputColIds = (chart.columns || []).filter(function(c) { return c.customerInputEnabled; }).map(function(c) { return c.id; });
+    var html = '<div id="sc-table-' + blockId + '" data-highlight="' + (highlightRowId || '') + '" style="overflow-x:auto;">';
+    html += '<table style="border-collapse:collapse;width:100%;font-size:13px;">';
+
+    // Header
+    html += '<thead><tr>';
+    chart.columns.forEach(function(col) {
+      var label = esc(col.name);
+      if (col.columnType === 'measurement') {
+        label += ' <span style="color:#6d7175;font-weight:normal;">(' + currentUnit + ')</span>';
+      }
+      html += '<th style="padding:8px 12px;border:1px solid #e1e3e5;background:#f6f6f7;text-align:left;white-space:nowrap;">' + label + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    // Rows
+    chart.rows.forEach(function(row) {
+      var isHighlight = highlightRowId && row.id === highlightRowId;
+      var rowStyle = isHighlight
+        ? 'background:#e8f5e9;outline:2px solid #4caf50;outline-offset:-1px;'
+        : '';
+      html += '<tr style="' + rowStyle + '">';
+      chart.columns.forEach(function(col) {
+        var cell = (row.cells || []).find(function(c) { return c.columnId === col.id; });
+        var display = '';
+        if (col.columnType === 'measurement' && cell && cell.minValue != null && cell.maxValue != null) {
+          display = toDisplay(cell.minValue) + '–' + toDisplay(cell.maxValue);
+        } else if (cell && cell.value) {
+          display = esc(cell.value);
+        }
+        var cellStyle = 'padding:8px 12px;border:1px solid #e1e3e5;';
+        if (isHighlight) cellStyle += 'font-weight:600;';
+        html += '<td style="' + cellStyle + '">' + display + '</td>';
+      });
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    return html;
+  }
+
+  // ── Utils ──────────────────────────────────────────────────────
+  function esc(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  // ── Modal events ───────────────────────────────────────────────
   btn.addEventListener('click', function() {
     modal.style.display = 'flex';
     loadChart();
   });
 
-  closeBtn.addEventListener('click', function() {
-    modal.style.display = 'none';
-  });
+  closeBtn.addEventListener('click', function() { modal.style.display = 'none'; });
 
   modal.addEventListener('click', function(e) {
     if (e.target === modal) modal.style.display = 'none';

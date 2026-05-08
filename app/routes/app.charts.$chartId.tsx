@@ -4,369 +4,482 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
+// ─── Loader ────────────────────────────────────────────────────────────────────
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const { chartId } = params;
-
-  if (chartId === "new") {
-    return { chart: null };
-  }
+  if (chartId === "new") return { chart: null };
 
   const chart = await prisma.sizeChart.findFirst({
     where: { id: chartId, shop: session.shop },
     include: {
       columns: { orderBy: { displayOrder: "asc" } },
-      rows: {
-        orderBy: { displayOrder: "asc" },
-        include: { cells: true },
-      },
+      rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
     },
   });
-
   if (!chart) throw new Response("Not found", { status: 404 });
   return { chart };
 };
 
+// ─── Action ────────────────────────────────────────────────────────────────────
+
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent") as string;
+  const form = await request.formData();
+  const intent = form.get("intent") as string;
   const { chartId } = params;
 
-  if (intent === "save") {
-    const title = (formData.get("title") as string)?.trim();
-    const description = (formData.get("description") as string)?.trim() || null;
-    const defaultUnit = (formData.get("defaultUnit") as string) || "cm";
-    const instructionsHtml = (formData.get("instructionsHtml") as string)?.trim() || null;
-
-    if (!title) return { error: "Title is required" };
+  if (intent === "save-details") {
+    const title = (form.get("title") as string)?.trim();
+    const description = (form.get("description") as string)?.trim() || null;
+    const chartType = (form.get("chartType") as string) || "simple";
+    const defaultUnit = (form.get("defaultUnit") as string) || "cm";
+    const instructionsHtml = (form.get("instructionsHtml") as string)?.trim() || null;
+    if (!title) return { error: "Titel er påkrævet" };
 
     if (chartId === "new") {
       const chart = await prisma.sizeChart.create({
-        data: { shop: session.shop, title, description, defaultUnit, instructionsHtml },
+        data: { shop: session.shop, title, description, chartType, defaultUnit, instructionsHtml },
       });
       return redirect(`/app/charts/${chart.id}`);
-    } else {
-      await prisma.sizeChart.updateMany({
-        where: { id: chartId, shop: session.shop },
-        data: { title, description, defaultUnit, instructionsHtml },
-      });
     }
+    await prisma.sizeChart.updateMany({
+      where: { id: chartId, shop: session.shop },
+      data: { title, description, chartType, defaultUnit, instructionsHtml },
+    });
+    return { success: "Gemt" };
   }
 
   if (intent === "add-column") {
-    const name = (formData.get("columnName") as string)?.trim();
-    const columnType = (formData.get("columnType") as string) || "measurement";
+    const name = (form.get("columnName") as string)?.trim();
+    const columnType = (form.get("columnType") as string) || "size_label";
+    const isMatchingKey = form.get("isMatchingKey") === "true";
+    const customerInputEnabled = form.get("customerInputEnabled") === "true";
+    const apparelMeasurementType = (form.get("apparelMeasurementType") as string)?.trim() || null;
+    const inputLabel = (form.get("inputLabel") as string)?.trim() || null;
+
     if (name && chartId !== "new") {
       const count = await prisma.sizeChartColumn.count({ where: { chartId } });
       await prisma.sizeChartColumn.create({
-        data: { chartId: chartId!, name, columnType, displayOrder: count },
+        data: { chartId: chartId!, name, columnType, displayOrder: count, isMatchingKey, customerInputEnabled, apparelMeasurementType, inputLabel },
       });
     }
+    return { success: "Kolonne tilføjet" };
+  }
+
+  if (intent === "update-column") {
+    const columnId = form.get("columnId") as string;
+    const isMatchingKey = form.get("isMatchingKey") === "true";
+    const customerInputEnabled = form.get("customerInputEnabled") === "true";
+    const inputLabel = (form.get("inputLabel") as string)?.trim() || null;
+    const apparelMeasurementType = (form.get("apparelMeasurementType") as string)?.trim() || null;
+    await prisma.sizeChartColumn.update({
+      where: { id: columnId },
+      data: { isMatchingKey, customerInputEnabled, inputLabel, apparelMeasurementType },
+    });
+    return { success: "Kolonne opdateret" };
+  }
+
+  if (intent === "delete-column") {
+    await prisma.sizeChartColumn.delete({ where: { id: form.get("columnId") as string } });
+    return { success: "Kolonne slettet" };
   }
 
   if (intent === "add-row") {
     if (chartId !== "new") {
       const count = await prisma.sizeChartRow.count({ where: { chartId } });
-      await prisma.sizeChartRow.create({
-        data: { chartId: chartId!, displayOrder: count },
-      });
+      await prisma.sizeChartRow.create({ data: { chartId: chartId!, displayOrder: count } });
     }
-  }
-
-  if (intent === "delete-column") {
-    const columnId = formData.get("columnId") as string;
-    await prisma.sizeChartColumn.delete({ where: { id: columnId } });
+    return { success: "Række tilføjet" };
   }
 
   if (intent === "delete-row") {
-    const rowId = formData.get("rowId") as string;
-    await prisma.sizeChartRow.delete({ where: { id: rowId } });
+    await prisma.sizeChartRow.delete({ where: { id: form.get("rowId") as string } });
+    return { success: "Række slettet" };
   }
 
   if (intent === "save-cells") {
-    const entries = Array.from(formData.entries()).filter(([k]) => k.startsWith("cell-"));
+    const entries = Array.from(form.entries());
     for (const [key, value] of entries) {
-      const [, rowId, columnId] = key.split("-", 3).concat(key.split("-").slice(2));
-      const parts = key.replace("cell-", "").split("-");
-      const cRowId = parts[0];
-      const cColId = parts[1];
-      await prisma.sizeChartCell.upsert({
-        where: { rowId_columnId: { rowId: cRowId, columnId: cColId } },
-        update: { value: value as string },
-        create: { rowId: cRowId, columnId: cColId, value: value as string },
-      });
+      if (key.startsWith("val-")) {
+        const [, rowId, colId] = key.split("-", 3).concat(key.split("-").slice(3));
+        const parts = key.replace("val-", "").split("-");
+        const rId = parts[0]; const cId = parts[1];
+        const minRaw = form.get(`min-${rId}-${cId}`) as string;
+        const maxRaw = form.get(`max-${rId}-${cId}`) as string;
+        await prisma.sizeChartCell.upsert({
+          where: { rowId_columnId: { rowId: rId, columnId: cId } },
+          update: { value: value as string, minValue: minRaw ? parseFloat(minRaw) : null, maxValue: maxRaw ? parseFloat(maxRaw) : null },
+          create: { rowId: rId, columnId: cId, value: value as string, minValue: minRaw ? parseFloat(minRaw) : null, maxValue: maxRaw ? parseFloat(maxRaw) : null },
+        });
+      }
     }
+    return { success: "Tabel gemt" };
   }
 
   return null;
 };
 
+// ─── Component ─────────────────────────────────────────────────────────────────
+
+const CHART_TYPES = [
+  { value: "simple", label: "Simpel tabel" },
+  { value: "apparel", label: "Tøj (med mål-anbefaling)" },
+  { value: "footwear", label: "Fodtøj (med mål-anbefaling)" },
+];
+
+const APPAREL_TYPES = [
+  { value: "bust", label: "Bryst/Bust" },
+  { value: "waist", label: "Talje" },
+  { value: "hip", label: "Hofte" },
+  { value: "shoulder", label: "Skulder" },
+  { value: "length", label: "Længde" },
+  { value: "sleeve", label: "Ærme" },
+  { value: "foot_length", label: "Fodlængde" },
+  { value: "inseam", label: "Indvendig benlængde" },
+];
+
 export default function ChartEditor() {
   const { chart } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
+  const nav = useNavigation();
+  const busy = nav.state !== "idle";
   const isNew = !chart;
 
-  const handleDeleteColumn = (columnId: string) => {
-    if (confirm("Delete this column? All cell data will be lost.")) {
-      submit({ intent: "delete-column", columnId }, { method: "POST" });
-    }
-  };
+  function del(intent: string, extra: Record<string, string>) {
+    if (!confirm("Er du sikker?")) return;
+    submit({ intent, ...extra }, { method: "post" });
+  }
 
-  const handleDeleteRow = (rowId: string) => {
-    if (confirm("Delete this row? All cell data will be lost.")) {
-      submit({ intent: "delete-row", rowId }, { method: "POST" });
-    }
-  };
+  const hasMeasurementCols = chart?.columns.some(
+    (c) => c.columnType === "measurement" && (c.isMatchingKey || c.customerInputEnabled)
+  );
 
   return (
-    <s-page heading={isNew ? "Create size chart" : chart.title} back-action="/app/charts">
-      {actionData?.error && (
-        <s-banner tone="critical" style={{ marginBottom: "16px" }}>
-          {actionData.error}
-        </s-banner>
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+        <a href="/app/charts" style={{ color: "#6d7175", textDecoration: "none", fontSize: 13 }}>
+          ← Size Charts
+        </a>
+        <span style={{ color: "#c9cccf" }}>/</span>
+        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
+          {isNew ? "Opret size chart" : chart.title}
+        </h1>
+      </div>
+
+      {actionData && "error" in actionData && (
+        <div style={bannerStyle("error")}>{actionData.error}</div>
+      )}
+      {actionData && "success" in actionData && (
+        <div style={bannerStyle("success")}>{actionData.success}</div>
       )}
 
-      {/* Basic info form */}
-      <s-section heading="Chart details">
-        <form method="POST">
-          <input type="hidden" name="intent" value="save" />
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div>
-              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                Title *
-              </label>
-              <input
-                name="title"
-                defaultValue={chart?.title || ""}
-                required
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  border: "1px solid #c9cccf",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                }}
-                placeholder="e.g. Women's Tops"
-              />
+      {/* ── Section 1: Detaljer ── */}
+      <div style={cardStyle}>
+        <h2 style={sectionHeading}>Chart detaljer</h2>
+        <form method="post">
+          <input type="hidden" name="intent" value="save-details" />
+          <div style={fieldGrid}>
+            <div style={fieldFull}>
+              <label style={labelStyle}>Titel *</label>
+              <input name="title" defaultValue={chart?.title || ""} required style={inputStyle} placeholder="fx Dame strik, Herresko, Babytøj…" />
             </div>
             <div>
-              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                Description
-              </label>
-              <textarea
-                name="description"
-                defaultValue={chart?.description || ""}
-                rows={2}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  border: "1px solid #c9cccf",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                  resize: "vertical",
-                }}
-                placeholder="Optional description shown to customers"
-              />
+              <label style={labelStyle}>Type</label>
+              <select name="chartType" defaultValue={chart?.chartType || "simple"} style={selectStyle}>
+                {CHART_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <p style={hintStyle}>Vælg "Tøj" eller "Fodtøj" for at aktivere anbefaling baseret på kundernes mål.</p>
             </div>
             <div>
-              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                Default unit
-              </label>
-              <select
-                name="defaultUnit"
-                defaultValue={chart?.defaultUnit || "cm"}
-                style={{
-                  padding: "8px 12px",
-                  border: "1px solid #c9cccf",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                }}
-              >
-                <option value="cm">cm</option>
-                <option value="inch">inch</option>
+              <label style={labelStyle}>Standard måleenhed</label>
+              <select name="defaultUnit" defaultValue={chart?.defaultUnit || "cm"} style={selectStyle}>
+                <option value="cm">Centimeter (cm)</option>
+                <option value="inch">Inches (in)</option>
               </select>
             </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                Instructions (HTML)
-              </label>
-              <textarea
-                name="instructionsHtml"
-                defaultValue={chart?.instructionsHtml || ""}
-                rows={3}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  border: "1px solid #c9cccf",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                  fontFamily: "monospace",
-                  resize: "vertical",
-                }}
-                placeholder="<p>How to measure yourself...</p>"
-              />
+            <div style={fieldFull}>
+              <label style={labelStyle}>Beskrivelse</label>
+              <textarea name="description" defaultValue={chart?.description || ""} rows={2} style={{ ...inputStyle, resize: "vertical" }} placeholder="Vises øverst i guiden, fx 'Størrelsesvejledning for strik'" />
             </div>
-            <div>
-              <s-button submit disabled={isLoading}>
-                {isNew ? "Create chart" : "Save details"}
-              </s-button>
+            <div style={fieldFull}>
+              <label style={labelStyle}>Instruktioner (HTML)</label>
+              <textarea name="instructionsHtml" defaultValue={chart?.instructionsHtml || ""} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: 12 }} placeholder="<p>Sådan måler du dig selv…</p>" />
             </div>
           </div>
+          <div style={{ marginTop: 16 }}>
+            <button type="submit" style={btnPrimary} disabled={busy}>
+              {isNew ? "Opret chart" : "Gem detaljer"}
+            </button>
+          </div>
         </form>
-      </s-section>
+      </div>
 
-      {/* Table editor — only shown after chart exists */}
+      {/* ── Section 2: Kolonner ── */}
       {!isNew && (
-        <>
-          <s-section heading="Size table">
-            {/* Add column */}
-            <form method="POST" style={{ display: "flex", gap: "8px", marginBottom: "16px", alignItems: "flex-end" }}>
-              <input type="hidden" name="intent" value="add-column" />
-              <div>
-                <label style={{ display: "block", marginBottom: "4px", fontSize: "13px" }}>
-                  Column name
-                </label>
-                <input
-                  name="columnName"
-                  required
-                  style={{
-                    padding: "6px 10px",
-                    border: "1px solid #c9cccf",
-                    borderRadius: "4px",
-                    fontSize: "13px",
-                  }}
-                  placeholder="e.g. XS, Chest (cm)"
-                />
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "4px", fontSize: "13px" }}>
-                  Type
-                </label>
-                <select
-                  name="columnType"
-                  style={{
-                    padding: "6px 10px",
-                    border: "1px solid #c9cccf",
-                    borderRadius: "4px",
-                    fontSize: "13px",
-                  }}
-                >
-                  <option value="size_label">Size label</option>
-                  <option value="measurement">Measurement</option>
-                </select>
-              </div>
-              <s-button submit variant="secondary">Add column</s-button>
-            </form>
+        <div style={cardStyle}>
+          <h2 style={sectionHeading}>Kolonner</h2>
+          <p style={hintStyle}>Tilføj kolonnerne til din størrelsesstabel. Aktiver "Kundeindtastning" på målingskolonner for at lade kunder finde deres størrelse.</p>
 
-            {/* The table */}
-            {chart.columns.length > 0 ? (
+          {/* Eksisterende kolonner */}
+          {chart.columns.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              {chart.columns.map((col) => (
+                <ColumnCard key={col.id} col={col} submit={submit} busy={busy} onDelete={() => del("delete-column", { columnId: col.id })} />
+              ))}
+            </div>
+          )}
+
+          {/* Tilføj kolonne */}
+          <AddColumnForm submit={submit} busy={busy} />
+        </div>
+      )}
+
+      {/* ── Section 3: Størrelsesstabel ── */}
+      {!isNew && chart.columns.length > 0 && (
+        <div style={cardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h2 style={{ ...sectionHeading, margin: 0 }}>Størrelsesstabel</h2>
+            <form method="post" style={{ display: "inline" }}>
+              <input type="hidden" name="intent" value="add-row" />
+              <button type="submit" style={btnSecondary} disabled={busy}>+ Tilføj række</button>
+            </form>
+          </div>
+
+          {chart.rows.length === 0 ? (
+            <p style={{ color: "#6d7175", fontSize: 14 }}>Ingen rækker endnu. Klik "Tilføj række" for at starte.</p>
+          ) : (
+            <form method="post">
+              <input type="hidden" name="intent" value="save-cells" />
               <div style={{ overflowX: "auto" }}>
-                <form method="POST">
-                  <input type="hidden" name="intent" value="save-cells" />
-                  <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "13px" }}>
-                    <thead>
+                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}></th>
+                      {chart.columns.map((col) => (
+                        <th key={col.id} style={thStyle}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            <span>{col.name}</span>
+                            {col.customerInputEnabled && <span style={{ fontSize: 10, color: "#8c6af6", fontWeight: 400 }}>kunde-input</span>}
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                    {hasMeasurementCols && (
                       <tr>
-                        <th style={{ padding: "6px", border: "1px solid #e1e3e5", background: "#f6f6f7", width: "32px" }} />
+                        <th style={{ ...thStyle, background: "#faf9fb", fontSize: 10, color: "#6d7175" }}>Min / Max</th>
                         {chart.columns.map((col) => (
-                          <th
-                            key={col.id}
-                            style={{
-                              padding: "6px 10px",
-                              border: "1px solid #e1e3e5",
-                              background: "#f6f6f7",
-                              textAlign: "left",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                              <span>{col.name}</span>
-                              <span style={{ fontSize: "11px", color: "#6d7175" }}>({col.columnType})</span>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteColumn(col.id)}
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  color: "#d72c0d",
-                                  fontSize: "12px",
-                                  padding: "0 2px",
-                                }}
-                                title="Delete column"
-                              >
-                                ✕
-                              </button>
-                            </div>
+                          <th key={col.id} style={{ ...thStyle, background: "#faf9fb", fontWeight: 400, fontSize: 10, color: "#6d7175" }}>
+                            {col.customerInputEnabled ? "min / max" : "—"}
                           </th>
                         ))}
                       </tr>
-                    </thead>
-                    <tbody>
-                      {chart.rows.map((row) => (
-                        <tr key={row.id}>
-                          <td style={{ padding: "4px", border: "1px solid #e1e3e5", textAlign: "center" }}>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteRow(row.id)}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: "#d72c0d",
-                                fontSize: "12px",
-                              }}
-                              title="Delete row"
-                            >
-                              ✕
-                            </button>
-                          </td>
-                          {chart.columns.map((col) => {
-                            const cell = row.cells.find((c) => c.columnId === col.id);
-                            return (
-                              <td key={col.id} style={{ padding: "2px", border: "1px solid #e1e3e5" }}>
-                                <input
-                                  name={`cell-${row.id}-${col.id}`}
-                                  defaultValue={cell?.value || ""}
-                                  style={{
-                                    width: "100%",
-                                    padding: "4px 8px",
-                                    border: "none",
-                                    fontSize: "13px",
-                                    background: "transparent",
-                                  }}
-                                />
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div style={{ marginTop: "12px", display: "flex", gap: "8px" }}>
-                    <s-button submit disabled={isLoading}>Save table</s-button>
-                  </div>
-                </form>
+                    )}
+                  </thead>
+                  <tbody>
+                    {chart.rows.map((row) => (
+                      <tr key={row.id}>
+                        <td style={{ ...tdStyle, width: 32 }}>
+                          <button type="button" onClick={() => del("delete-row", { rowId: row.id })} style={deleteDotBtn} title="Slet række">✕</button>
+                        </td>
+                        {chart.columns.map((col) => {
+                          const cell = row.cells.find((c) => c.columnId === col.id);
+                          return (
+                            <td key={col.id} style={tdStyle}>
+                              <input name={`val-${row.id}-${col.id}`} defaultValue={cell?.value || ""} style={cellInput} placeholder="—" />
+                              {col.customerInputEnabled && (
+                                <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
+                                  <input name={`min-${row.id}-${col.id}`} defaultValue={cell?.minValue ?? ""} style={{ ...cellInput, width: "45%", fontSize: 11, color: "#6d7175" }} placeholder="min" type="number" step="0.1" />
+                                  <input name={`max-${row.id}-${col.id}`} defaultValue={cell?.maxValue ?? ""} style={{ ...cellInput, width: "45%", fontSize: 11, color: "#6d7175" }} placeholder="max" type="number" step="0.1" />
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ) : (
-              <s-paragraph>Add columns to start building your size table.</s-paragraph>
-            )}
-
-            {/* Add row */}
-            <form method="POST" style={{ marginTop: "12px" }}>
-              <input type="hidden" name="intent" value="add-row" />
-              <s-button submit variant="secondary" disabled={chart.columns.length === 0 || isLoading}>
-                Add row
-              </s-button>
+              <div style={{ marginTop: 14 }}>
+                <button type="submit" style={btnPrimary} disabled={busy}>Gem tabel</button>
+              </div>
             </form>
-          </s-section>
-        </>
+          )}
+        </div>
       )}
-    </s-page>
+    </div>
   );
 }
 
-export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);
+// ─── ColumnCard ─────────────────────────────────────────────────────────────────
+
+function ColumnCard({ col, submit, busy, onDelete }: any) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  return (
+    <div style={{ border: "1px solid #e1e3e5", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#fafafa", cursor: "pointer" }} onClick={() => setExpanded(!expanded)}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontWeight: 500, fontSize: 14 }}>{col.name}</span>
+          <span style={typeBadge(col.columnType)}>{col.columnType === "size_label" ? "størrelsesbetegnelse" : "måling"}</span>
+          {col.customerInputEnabled && <span style={typeBadge("input")}>kunde-input</span>}
+          {col.isMatchingKey && <span style={typeBadge("key")}>matching-nøgle</span>}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <span style={{ color: "#6d7175", fontSize: 12 }}>{expanded ? "▲" : "▼"}</span>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(); }} style={{ ...deleteDotBtn, position: "static" }}>✕</button>
+        </div>
+      </div>
+      {expanded && (
+        <form method="post" style={{ padding: "14px 16px", background: "#fff" }}>
+          <input type="hidden" name="intent" value="update-column" />
+          <input type="hidden" name="columnId" value={col.id} />
+          <div style={fieldGrid}>
+            <div>
+              <label style={labelStyle}>Kundeindtastning</label>
+              <select name="customerInputEnabled" defaultValue={col.customerInputEnabled ? "true" : "false"} style={selectStyle}>
+                <option value="false">Nej</option>
+                <option value="true">Ja — kunden kan indtaste dette mål</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Matching-nøgle</label>
+              <select name="isMatchingKey" defaultValue={col.isMatchingKey ? "true" : "false"} style={selectStyle}>
+                <option value="false">Nej</option>
+                <option value="true">Ja — bruges til størrelsesanbefaling</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Mål-type</label>
+              <select name="apparelMeasurementType" defaultValue={col.apparelMeasurementType || ""} style={selectStyle}>
+                <option value="">— ingen —</option>
+                {[{value:"bust",label:"Bryst/Bust"},{value:"waist",label:"Talje"},{value:"hip",label:"Hofte"},{value:"shoulder",label:"Skulder"},{value:"length",label:"Længde"},{value:"sleeve",label:"Ærme"},{value:"foot_length",label:"Fodlængde"},{value:"inseam",label:"Indvendig benlængde"}].map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Label til kunden</label>
+              <input name="inputLabel" defaultValue={col.inputLabel || ""} style={inputStyle} placeholder="fx Bryst/Bust (cm)" />
+            </div>
+          </div>
+          <button type="submit" style={{ ...btnSecondary, marginTop: 12 }} disabled={busy}>Gem kolonne</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ─── AddColumnForm ───────────────────────────────────────────────────────────────
+
+function AddColumnForm({ submit, busy }: any) {
+  const [type, setType] = React.useState("size_label");
+  const formRef = React.useRef<HTMLFormElement>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const fd = new FormData(formRef.current!);
+    submit(fd, { method: "post" });
+    formRef.current?.reset();
+    setType("size_label");
+  }
+
+  return (
+    <div style={{ border: "2px dashed #e1e3e5", borderRadius: 8, padding: "16px" }}>
+      <p style={{ margin: "0 0 12px", fontWeight: 500, fontSize: 14 }}>+ Ny kolonne</p>
+      <form ref={formRef} onSubmit={handleSubmit}>
+        <input type="hidden" name="intent" value="add-column" />
+        <div style={fieldGrid}>
+          <div>
+            <label style={labelStyle}>Kolonnenavn *</label>
+            <input name="columnName" required style={inputStyle} placeholder="fx SIZE, EU, Bryst (cm)…" />
+          </div>
+          <div>
+            <label style={labelStyle}>Type</label>
+            <select name="columnType" value={type} onChange={(e) => setType(e.target.value)} style={selectStyle}>
+              <option value="size_label">Størrelsesbetegnelse (XS, S, M…)</option>
+              <option value="measurement">Måling (tal)</option>
+            </select>
+          </div>
+          {type === "measurement" && (
+            <>
+              <div>
+                <label style={labelStyle}>Kundeindtastning</label>
+                <select name="customerInputEnabled" style={selectStyle}>
+                  <option value="false">Nej</option>
+                  <option value="true">Ja</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Matching-nøgle</label>
+                <select name="isMatchingKey" style={selectStyle}>
+                  <option value="false">Nej</option>
+                  <option value="true">Ja</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Mål-type</label>
+                <select name="apparelMeasurementType" style={selectStyle}>
+                  <option value="">— ingen —</option>
+                  {[{value:"bust",label:"Bryst/Bust"},{value:"waist",label:"Talje"},{value:"hip",label:"Hofte"},{value:"shoulder",label:"Skulder"},{value:"length",label:"Længde"},{value:"sleeve",label:"Ærme"},{value:"foot_length",label:"Fodlængde"},{value:"inseam",label:"Indvendig benlængde"}].map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Label til kunden</label>
+                <input name="inputLabel" style={inputStyle} placeholder="fx Bryst/Bust (cm)" />
+              </div>
+            </>
+          )}
+          {type === "size_label" && (
+            <input type="hidden" name="customerInputEnabled" value="false" />
+          )}
+        </div>
+        <button type="submit" style={{ ...btnSecondary, marginTop: 14 }} disabled={busy}>Tilføj kolonne</button>
+      </form>
+    </div>
+  );
+}
+
+// We need React for useState/useRef
+import React from "react";
+
+// ─── Styles ─────────────────────────────────────────────────────────────────────
+
+const cardStyle: React.CSSProperties = { background: "#fff", border: "1px solid #e1e3e5", borderRadius: 12, padding: "24px", marginBottom: 20 };
+const sectionHeading: React.CSSProperties = { fontSize: 16, fontWeight: 600, margin: "0 0 16px" };
+const fieldGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 };
+const fieldFull: React.CSSProperties = { gridColumn: "1 / -1" };
+const labelStyle: React.CSSProperties = { display: "block", marginBottom: 5, fontWeight: 500, fontSize: 13 };
+const hintStyle: React.CSSProperties = { margin: "4px 0 0", fontSize: 12, color: "#6d7175" };
+const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", border: "1px solid #c9cccf", borderRadius: 6, fontSize: 14, boxSizing: "border-box" };
+const selectStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", border: "1px solid #c9cccf", borderRadius: 6, fontSize: 14, background: "#fff", boxSizing: "border-box" };
+const cellInput: React.CSSProperties = { width: "100%", padding: "5px 7px", border: "1px solid #e1e3e5", borderRadius: 4, fontSize: 13, boxSizing: "border-box", background: "transparent" };
+const thStyle: React.CSSProperties = { padding: "8px 10px", border: "1px solid #e1e3e5", background: "#f6f6f7", textAlign: "left", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" };
+const tdStyle: React.CSSProperties = { padding: "4px 6px", border: "1px solid #e1e3e5", verticalAlign: "top" };
+const btnPrimary: React.CSSProperties = { background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
+const btnSecondary: React.CSSProperties = { background: "#fff", color: "#1a1a1a", border: "1px solid #c9cccf", borderRadius: 6, padding: "8px 16px", fontSize: 13, cursor: "pointer" };
+const deleteDotBtn: React.CSSProperties = { background: "none", border: "none", cursor: "pointer", color: "#d72c0d", fontSize: 13, padding: "2px 4px" };
+
+function typeBadge(type: string): React.CSSProperties {
+  const colors: Record<string, { bg: string; color: string }> = {
+    size_label: { bg: "#e3f1e3", color: "#2d6a2d" },
+    measurement: { bg: "#e8f0ff", color: "#1a4a9c" },
+    input: { bg: "#f3edff", color: "#5c21ba" },
+    key: { bg: "#fff3cd", color: "#856404" },
+  };
+  const c = colors[type] || { bg: "#f0f0f0", color: "#555" };
+  return { display: "inline-block", padding: "2px 7px", borderRadius: 10, fontSize: 11, fontWeight: 500, background: c.bg, color: c.color };
+}
+
+function bannerStyle(type: "error" | "success"): React.CSSProperties {
+  return {
+    padding: "10px 14px", borderRadius: 6, marginBottom: 16, fontSize: 14,
+    background: type === "error" ? "#fff4f4" : "#f1faf1",
+    color: type === "error" ? "#d72c0d" : "#1a6b1a",
+    border: `1px solid ${type === "error" ? "#f9c0b9" : "#a8d5a8"}`,
+  };
+}
+
+export const headers: HeadersFunction = (h) => boundary.headers(h);
