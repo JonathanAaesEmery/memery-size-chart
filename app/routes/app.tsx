@@ -1,20 +1,44 @@
+import React from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, useLoaderData, useRouteError, NavLink } from "react-router";
+import { Outlet, useLoaderData, useRouteError, NavLink, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { AppProvider } from "@shopify/shopify-app-react-router/react";
-
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  const url = new URL(request.url);
+  const host = url.searchParams.get("host") || "";
+  const shop = url.searchParams.get("shop") || "";
+  const apiKey = process.env.SHOPIFY_API_KEY || "";
+  return { apiKey, host, shop };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, host, shop } = useLoaderData<typeof loader>();
+  const [searchParams] = useSearchParams();
+
+  // Preserve Shopify params across all internal navigations
+  const currentHost = searchParams.get("host") || host;
+  const currentShop = searchParams.get("shop") || shop;
+  const shopifyParams = new URLSearchParams();
+  if (currentHost) shopifyParams.set("host", currentHost);
+  if (currentShop) shopifyParams.set("shop", currentShop);
+  const qs = shopifyParams.toString() ? `?${shopifyParams.toString()}` : "";
+
+  function navTo(path: string) {
+    return `${path}${qs}`;
+  }
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
+    <>
+      {/* App Bridge — loads with host param so it can initialize properly */}
+      {apiKey && currentHost && (
+        <script
+          src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
+          data-api-key={apiKey}
+          data-host={currentHost}
+        />
+      )}
       <div style={{ minHeight: "100vh", background: "#f6f6f7" }}>
         <nav style={{
           background: "#fff",
@@ -25,14 +49,14 @@ export default function App() {
           alignItems: "center",
           height: 52,
         }}>
-          <NavLink to="/app/charts" style={navLinkStyle}>Size Charts</NavLink>
-          <NavLink to="/app/mappings" style={navLinkStyle}>Product Mappings</NavLink>
-          <NavLink to="/app/fallbacks" style={navLinkStyle}>Fallback Rules</NavLink>
-          <NavLink to="/app/settings" style={navLinkStyle}>Settings</NavLink>
+          <NavLink to={navTo("/app/charts")} style={navLinkStyle}>Size Charts</NavLink>
+          <NavLink to={navTo("/app/mappings")} style={navLinkStyle}>Product Mappings</NavLink>
+          <NavLink to={navTo("/app/fallbacks")} style={navLinkStyle}>Fallback Rules</NavLink>
+          <NavLink to={navTo("/app/settings")} style={navLinkStyle}>Settings</NavLink>
         </nav>
         <Outlet />
       </div>
-    </AppProvider>
+    </>
   );
 }
 
@@ -47,8 +71,6 @@ function navLinkStyle({ isActive }: { isActive: boolean }) {
     background: isActive ? "#f1f1f1" : "transparent",
   } as React.CSSProperties;
 }
-
-import React from "react";
 
 export function ErrorBoundary() {
   return boundary.error(useRouteError());

@@ -1,5 +1,6 @@
+import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useNavigation, Form, Link } from "react-router";
+import { useLoaderData, useNavigation, Form, Link, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -45,18 +46,20 @@ export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
+  const [searchParams] = useSearchParams();
+  const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>Size Charts</h1>
-        <Link to="/app/charts/new" style={btnPrimaryStyle}>+ Opret nyt chart</Link>
+        <Link to={`/app/charts/new${qs}`} style={btnPrimaryStyle}>+ Create chart</Link>
       </div>
 
       {charts.length === 0 ? (
         <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, padding: "40px 24px", textAlign: "center" }}>
-          <p style={{ color: "#6d7175", marginBottom: 16 }}>Ingen size charts endnu. Opret dit første chart.</p>
-          <Link to="/app/charts/new" style={btnPrimaryStyle}>Opret dit første chart</Link>
+          <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
+          <Link to={`/app/charts/new${qs}`} style={btnPrimaryStyle}>Create your first chart</Link>
         </div>
       ) : (
         <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -82,25 +85,25 @@ export default function ChartsPage() {
                   background: chart.isActive ? "#d4edda" : "#f8d7da",
                   color: chart.isActive ? "#155724" : "#721c24",
                 }}>
-                  {chart.isActive ? "Aktiv" : "Inaktiv"}
+                  {chart.isActive ? "Active" : "Inactive"}
                 </span>
                 <span style={{ marginLeft: 10, color: "#6d7175", fontSize: 13 }}>
-                  {chart._count.productMappings} produkt{chart._count.productMappings !== 1 ? "er" : ""}
+                  {chart._count.productMappings} product{chart._count.productMappings !== 1 ? "s" : ""}
                 </span>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <Link to={`/app/charts/${chart.id}`} style={btnSecondaryStyle}>Rediger</Link>
+                <Link to={`/app/charts/${chart.id}${qs}`} style={btnSecondaryStyle}>Edit</Link>
                 <Form method="post" style={{ display: "inline" }}>
                   <input type="hidden" name="intent" value="toggle" />
                   <input type="hidden" name="id" value={chart.id} />
                   <button type="submit" style={btnSecondaryStyle} disabled={isLoading}>
-                    {chart.isActive ? "Deaktivér" : "Aktivér"}
+                    {chart.isActive ? "Deactivate" : "Activate"}
                   </button>
                 </Form>
-                <Form method="post" style={{ display: "inline" }} onSubmit={(e) => { if (!confirm(`Slet "${chart.title}"?`)) e.preventDefault(); }}>
+                <Form method="post" style={{ display: "inline" }} onSubmit={(e) => { if (!confirm(`Delete "${chart.title}"?`)) e.preventDefault(); }}>
                   <input type="hidden" name="intent" value="delete" />
                   <input type="hidden" name="id" value={chart.id} />
-                  <button type="submit" style={btnDangerStyle} disabled={isLoading}>Slet</button>
+                  <button type="submit" style={btnDangerStyle} disabled={isLoading}>Delete</button>
                 </Form>
               </div>
             </div>
@@ -114,7 +117,5 @@ export default function ChartsPage() {
 const btnPrimaryStyle: React.CSSProperties = { background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer", textDecoration: "none", display: "inline-block" };
 const btnSecondaryStyle: React.CSSProperties = { background: "#fff", color: "#1a1a1a", border: "1px solid #c9cccf", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer", textDecoration: "none", display: "inline-block" };
 const btnDangerStyle: React.CSSProperties = { background: "#fff", color: "#d72c0d", border: "1px solid #ffa8a0", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer" };
-
-import React from "react";
 
 export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);

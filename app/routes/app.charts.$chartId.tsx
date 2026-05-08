@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation, useActionData, redirect } from "react-router";
+import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, Link, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -37,19 +37,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const chartType = (form.get("chartType") as string) || "simple";
     const defaultUnit = (form.get("defaultUnit") as string) || "cm";
     const instructionsHtml = (form.get("instructionsHtml") as string)?.trim() || null;
-    if (!title) return { error: "Titel er påkrævet" };
+    if (!title) return { error: "Title is required" };
 
     if (chartId === "new") {
       const chart = await prisma.sizeChart.create({
         data: { shop: session.shop, title, description, chartType, defaultUnit, instructionsHtml },
       });
-      return redirect(`/app/charts/${chart.id}`);
+      const url = new URL(request.url);
+      const qs = url.search;
+      return redirect(`/app/charts/${chart.id}${qs}`);
     }
     await prisma.sizeChart.updateMany({
       where: { id: chartId, shop: session.shop },
       data: { title, description, chartType, defaultUnit, instructionsHtml },
     });
-    return { success: "Gemt" };
+    return { success: "Saved" };
   }
 
   if (intent === "add-column") {
@@ -66,7 +68,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         data: { chartId: chartId!, name, columnType, displayOrder: count, isMatchingKey, customerInputEnabled, apparelMeasurementType, inputLabel },
       });
     }
-    return { success: "Kolonne tilføjet" };
+    return { success: "Column added" };
   }
 
   if (intent === "update-column") {
@@ -79,12 +81,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       where: { id: columnId },
       data: { isMatchingKey, customerInputEnabled, inputLabel, apparelMeasurementType },
     });
-    return { success: "Kolonne opdateret" };
+    return { success: "Column updated" };
   }
 
   if (intent === "delete-column") {
     await prisma.sizeChartColumn.delete({ where: { id: form.get("columnId") as string } });
-    return { success: "Kolonne slettet" };
+    return { success: "Column deleted" };
   }
 
   if (intent === "add-row") {
@@ -92,12 +94,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const count = await prisma.sizeChartRow.count({ where: { chartId } });
       await prisma.sizeChartRow.create({ data: { chartId: chartId!, displayOrder: count } });
     }
-    return { success: "Række tilføjet" };
+    return { success: "Row added" };
   }
 
   if (intent === "delete-row") {
     await prisma.sizeChartRow.delete({ where: { id: form.get("rowId") as string } });
-    return { success: "Række slettet" };
+    return { success: "Row deleted" };
   }
 
   if (intent === "save-cells") {
@@ -116,7 +118,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         });
       }
     }
-    return { success: "Tabel gemt" };
+    return { success: "Table saved" };
   }
 
   return null;
@@ -125,20 +127,20 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 const CHART_TYPES = [
-  { value: "simple", label: "Simpel tabel" },
-  { value: "apparel", label: "Tøj (med mål-anbefaling)" },
-  { value: "footwear", label: "Fodtøj (med mål-anbefaling)" },
+  { value: "simple", label: "Simple table" },
+  { value: "apparel", label: "Apparel (with size recommendation)" },
+  { value: "footwear", label: "Footwear (with size recommendation)" },
 ];
 
-const APPAREL_TYPES = [
-  { value: "bust", label: "Bryst/Bust" },
-  { value: "waist", label: "Talje" },
-  { value: "hip", label: "Hofte" },
-  { value: "shoulder", label: "Skulder" },
-  { value: "length", label: "Længde" },
-  { value: "sleeve", label: "Ærme" },
-  { value: "foot_length", label: "Fodlængde" },
-  { value: "inseam", label: "Indvendig benlængde" },
+const MEASUREMENT_TYPES = [
+  { value: "bust", label: "Bust/Chest" },
+  { value: "waist", label: "Waist" },
+  { value: "hip", label: "Hip" },
+  { value: "shoulder", label: "Shoulder" },
+  { value: "length", label: "Length" },
+  { value: "sleeve", label: "Sleeve" },
+  { value: "foot_length", label: "Foot length" },
+  { value: "inseam", label: "Inseam" },
 ];
 
 export default function ChartEditor() {
@@ -148,9 +150,11 @@ export default function ChartEditor() {
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const isNew = !chart;
+  const [searchParams] = useSearchParams();
+  const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
 
   function del(intent: string, extra: Record<string, string>) {
-    if (!confirm("Er du sikker?")) return;
+    if (!confirm("Are you sure?")) return;
     submit({ intent, ...extra }, { method: "post" });
   }
 
@@ -162,12 +166,12 @@ export default function ChartEditor() {
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
-        <a href="/app/charts" style={{ color: "#6d7175", textDecoration: "none", fontSize: 13 }}>
+        <Link to={`/app/charts${qs}`} style={{ color: "#6d7175", textDecoration: "none", fontSize: 13 }}>
           ← Size Charts
-        </a>
+        </Link>
         <span style={{ color: "#c9cccf" }}>/</span>
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
-          {isNew ? "Opret size chart" : chart.title}
+          {isNew ? "New size chart" : chart.title}
         </h1>
       </div>
 
@@ -178,54 +182,53 @@ export default function ChartEditor() {
         <div style={bannerStyle("success")}>{actionData.success}</div>
       )}
 
-      {/* ── Section 1: Detaljer ── */}
+      {/* ── Section 1: Details ── */}
       <div style={cardStyle}>
-        <h2 style={sectionHeading}>Chart detaljer</h2>
+        <h2 style={sectionHeading}>Chart details</h2>
         <form method="post">
           <input type="hidden" name="intent" value="save-details" />
           <div style={fieldGrid}>
             <div style={fieldFull}>
-              <label style={labelStyle}>Titel *</label>
-              <input name="title" defaultValue={chart?.title || ""} required style={inputStyle} placeholder="fx Dame strik, Herresko, Babytøj…" />
+              <label style={labelStyle}>Title *</label>
+              <input name="title" defaultValue={chart?.title || ""} required style={inputStyle} placeholder="e.g. Women's knitwear, Men's shoes…" />
             </div>
             <div>
-              <label style={labelStyle}>Type</label>
+              <label style={labelStyle}>Chart type</label>
               <select name="chartType" defaultValue={chart?.chartType || "simple"} style={selectStyle}>
                 {CHART_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
-              <p style={hintStyle}>Vælg "Tøj" eller "Fodtøj" for at aktivere anbefaling baseret på kundernes mål.</p>
+              <p style={hintStyle}>Choose "Apparel" or "Footwear" to enable customer measurement input and size recommendation.</p>
             </div>
             <div>
-              <label style={labelStyle}>Standard måleenhed</label>
+              <label style={labelStyle}>Default unit</label>
               <select name="defaultUnit" defaultValue={chart?.defaultUnit || "cm"} style={selectStyle}>
-                <option value="cm">Centimeter (cm)</option>
+                <option value="cm">Centimeters (cm)</option>
                 <option value="inch">Inches (in)</option>
               </select>
             </div>
             <div style={fieldFull}>
-              <label style={labelStyle}>Beskrivelse</label>
-              <textarea name="description" defaultValue={chart?.description || ""} rows={2} style={{ ...inputStyle, resize: "vertical" }} placeholder="Vises øverst i guiden, fx 'Størrelsesvejledning for strik'" />
+              <label style={labelStyle}>Description</label>
+              <textarea name="description" defaultValue={chart?.description || ""} rows={2} style={{ ...inputStyle, resize: "vertical" }} placeholder="Shown at the top of the guide, e.g. 'Size guide for knitwear'" />
             </div>
             <div style={fieldFull}>
-              <label style={labelStyle}>Instruktioner (HTML)</label>
-              <textarea name="instructionsHtml" defaultValue={chart?.instructionsHtml || ""} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: 12 }} placeholder="<p>Sådan måler du dig selv…</p>" />
+              <label style={labelStyle}>Instructions (HTML)</label>
+              <textarea name="instructionsHtml" defaultValue={chart?.instructionsHtml || ""} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: 12 }} placeholder="<p>How to measure yourself…</p>" />
             </div>
           </div>
           <div style={{ marginTop: 16 }}>
             <button type="submit" style={btnPrimary} disabled={busy}>
-              {isNew ? "Opret chart" : "Gem detaljer"}
+              {isNew ? "Create chart" : "Save details"}
             </button>
           </div>
         </form>
       </div>
 
-      {/* ── Section 2: Kolonner ── */}
+      {/* ── Section 2: Columns ── */}
       {!isNew && (
         <div style={cardStyle}>
-          <h2 style={sectionHeading}>Kolonner</h2>
-          <p style={hintStyle}>Tilføj kolonnerne til din størrelsesstabel. Aktiver "Kundeindtastning" på målingskolonner for at lade kunder finde deres størrelse.</p>
+          <h2 style={sectionHeading}>Columns</h2>
+          <p style={hintStyle}>Add the columns for your size table. Enable "Customer input" on measurement columns to let customers find their size.</p>
 
-          {/* Eksisterende kolonner */}
           {chart.columns.length > 0 && (
             <div style={{ marginBottom: 20 }}>
               {chart.columns.map((col) => (
@@ -234,24 +237,23 @@ export default function ChartEditor() {
             </div>
           )}
 
-          {/* Tilføj kolonne */}
           <AddColumnForm submit={submit} busy={busy} />
         </div>
       )}
 
-      {/* ── Section 3: Størrelsesstabel ── */}
+      {/* ── Section 3: Size table ── */}
       {!isNew && chart.columns.length > 0 && (
         <div style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <h2 style={{ ...sectionHeading, margin: 0 }}>Størrelsesstabel</h2>
+            <h2 style={{ ...sectionHeading, margin: 0 }}>Size table</h2>
             <form method="post" style={{ display: "inline" }}>
               <input type="hidden" name="intent" value="add-row" />
-              <button type="submit" style={btnSecondary} disabled={busy}>+ Tilføj række</button>
+              <button type="submit" style={btnSecondary} disabled={busy}>+ Add row</button>
             </form>
           </div>
 
           {chart.rows.length === 0 ? (
-            <p style={{ color: "#6d7175", fontSize: 14 }}>Ingen rækker endnu. Klik "Tilføj række" for at starte.</p>
+            <p style={{ color: "#6d7175", fontSize: 14 }}>No rows yet. Click "Add row" to start.</p>
           ) : (
             <form method="post">
               <input type="hidden" name="intent" value="save-cells" />
@@ -264,7 +266,7 @@ export default function ChartEditor() {
                         <th key={col.id} style={thStyle}>
                           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                             <span>{col.name}</span>
-                            {col.customerInputEnabled && <span style={{ fontSize: 10, color: "#8c6af6", fontWeight: 400 }}>kunde-input</span>}
+                            {col.customerInputEnabled && <span style={{ fontSize: 10, color: "#8c6af6", fontWeight: 400 }}>customer input</span>}
                           </div>
                         </th>
                       ))}
@@ -284,7 +286,7 @@ export default function ChartEditor() {
                     {chart.rows.map((row) => (
                       <tr key={row.id}>
                         <td style={{ ...tdStyle, width: 32 }}>
-                          <button type="button" onClick={() => del("delete-row", { rowId: row.id })} style={deleteDotBtn} title="Slet række">✕</button>
+                          <button type="button" onClick={() => del("delete-row", { rowId: row.id })} style={deleteDotBtn} title="Delete row">✕</button>
                         </td>
                         {chart.columns.map((col) => {
                           const cell = row.cells.find((c) => c.columnId === col.id);
@@ -306,7 +308,7 @@ export default function ChartEditor() {
                 </table>
               </div>
               <div style={{ marginTop: 14 }}>
-                <button type="submit" style={btnPrimary} disabled={busy}>Gem tabel</button>
+                <button type="submit" style={btnPrimary} disabled={busy}>Save table</button>
               </div>
             </form>
           )}
@@ -326,9 +328,9 @@ function ColumnCard({ col, submit, busy, onDelete }: any) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#fafafa", cursor: "pointer" }} onClick={() => setExpanded(!expanded)}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontWeight: 500, fontSize: 14 }}>{col.name}</span>
-          <span style={typeBadge(col.columnType)}>{col.columnType === "size_label" ? "størrelsesbetegnelse" : "måling"}</span>
-          {col.customerInputEnabled && <span style={typeBadge("input")}>kunde-input</span>}
-          {col.isMatchingKey && <span style={typeBadge("key")}>matching-nøgle</span>}
+          <span style={typeBadge(col.columnType)}>{col.columnType === "size_label" ? "size label" : "measurement"}</span>
+          {col.customerInputEnabled && <span style={typeBadge("input")}>customer input</span>}
+          {col.isMatchingKey && <span style={typeBadge("key")}>matching key</span>}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <span style={{ color: "#6d7175", fontSize: 12 }}>{expanded ? "▲" : "▼"}</span>
@@ -341,32 +343,32 @@ function ColumnCard({ col, submit, busy, onDelete }: any) {
           <input type="hidden" name="columnId" value={col.id} />
           <div style={fieldGrid}>
             <div>
-              <label style={labelStyle}>Kundeindtastning</label>
+              <label style={labelStyle}>Customer input</label>
               <select name="customerInputEnabled" defaultValue={col.customerInputEnabled ? "true" : "false"} style={selectStyle}>
-                <option value="false">Nej</option>
-                <option value="true">Ja — kunden kan indtaste dette mål</option>
+                <option value="false">No</option>
+                <option value="true">Yes — customer can enter this measurement</option>
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Matching-nøgle</label>
+              <label style={labelStyle}>Matching key</label>
               <select name="isMatchingKey" defaultValue={col.isMatchingKey ? "true" : "false"} style={selectStyle}>
-                <option value="false">Nej</option>
-                <option value="true">Ja — bruges til størrelsesanbefaling</option>
+                <option value="false">No</option>
+                <option value="true">Yes — used for size recommendation output</option>
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Mål-type</label>
+              <label style={labelStyle}>Measurement type</label>
               <select name="apparelMeasurementType" defaultValue={col.apparelMeasurementType || ""} style={selectStyle}>
-                <option value="">— ingen —</option>
-                {[{value:"bust",label:"Bryst/Bust"},{value:"waist",label:"Talje"},{value:"hip",label:"Hofte"},{value:"shoulder",label:"Skulder"},{value:"length",label:"Længde"},{value:"sleeve",label:"Ærme"},{value:"foot_length",label:"Fodlængde"},{value:"inseam",label:"Indvendig benlængde"}].map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                <option value="">— none —</option>
+                {MEASUREMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Label til kunden</label>
-              <input name="inputLabel" defaultValue={col.inputLabel || ""} style={inputStyle} placeholder="fx Bryst/Bust (cm)" />
+              <label style={labelStyle}>Label shown to customer</label>
+              <input name="inputLabel" defaultValue={col.inputLabel || ""} style={inputStyle} placeholder="e.g. Bust/Chest (cm)" />
             </div>
           </div>
-          <button type="submit" style={{ ...btnSecondary, marginTop: 12 }} disabled={busy}>Gem kolonne</button>
+          <button type="submit" style={{ ...btnSecondary, marginTop: 12 }} disabled={busy}>Save column</button>
         </form>
       )}
     </div>
@@ -389,47 +391,47 @@ function AddColumnForm({ submit, busy }: any) {
 
   return (
     <div style={{ border: "2px dashed #e1e3e5", borderRadius: 8, padding: "16px" }}>
-      <p style={{ margin: "0 0 12px", fontWeight: 500, fontSize: 14 }}>+ Ny kolonne</p>
+      <p style={{ margin: "0 0 12px", fontWeight: 500, fontSize: 14 }}>+ New column</p>
       <form ref={formRef} onSubmit={handleSubmit}>
         <input type="hidden" name="intent" value="add-column" />
         <div style={fieldGrid}>
           <div>
-            <label style={labelStyle}>Kolonnenavn *</label>
-            <input name="columnName" required style={inputStyle} placeholder="fx SIZE, EU, Bryst (cm)…" />
+            <label style={labelStyle}>Column name *</label>
+            <input name="columnName" required style={inputStyle} placeholder="e.g. SIZE, EU, Bust (cm)…" />
           </div>
           <div>
             <label style={labelStyle}>Type</label>
             <select name="columnType" value={type} onChange={(e) => setType(e.target.value)} style={selectStyle}>
-              <option value="size_label">Størrelsesbetegnelse (XS, S, M…)</option>
-              <option value="measurement">Måling (tal)</option>
+              <option value="size_label">Size label (XS, S, M…)</option>
+              <option value="measurement">Measurement (number)</option>
             </select>
           </div>
           {type === "measurement" && (
             <>
               <div>
-                <label style={labelStyle}>Kundeindtastning</label>
+                <label style={labelStyle}>Customer input</label>
                 <select name="customerInputEnabled" style={selectStyle}>
-                  <option value="false">Nej</option>
-                  <option value="true">Ja</option>
+                  <option value="false">No</option>
+                  <option value="true">Yes</option>
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Matching-nøgle</label>
+                <label style={labelStyle}>Matching key</label>
                 <select name="isMatchingKey" style={selectStyle}>
-                  <option value="false">Nej</option>
-                  <option value="true">Ja</option>
+                  <option value="false">No</option>
+                  <option value="true">Yes</option>
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Mål-type</label>
+                <label style={labelStyle}>Measurement type</label>
                 <select name="apparelMeasurementType" style={selectStyle}>
-                  <option value="">— ingen —</option>
-                  {[{value:"bust",label:"Bryst/Bust"},{value:"waist",label:"Talje"},{value:"hip",label:"Hofte"},{value:"shoulder",label:"Skulder"},{value:"length",label:"Længde"},{value:"sleeve",label:"Ærme"},{value:"foot_length",label:"Fodlængde"},{value:"inseam",label:"Indvendig benlængde"}].map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  <option value="">— none —</option>
+                  {MEASUREMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Label til kunden</label>
-                <input name="inputLabel" style={inputStyle} placeholder="fx Bryst/Bust (cm)" />
+                <label style={labelStyle}>Label shown to customer</label>
+                <input name="inputLabel" style={inputStyle} placeholder="e.g. Bust/Chest (cm)" />
               </div>
             </>
           )}
@@ -437,7 +439,7 @@ function AddColumnForm({ submit, busy }: any) {
             <input type="hidden" name="customerInputEnabled" value="false" />
           )}
         </div>
-        <button type="submit" style={{ ...btnSecondary, marginTop: 14 }} disabled={busy}>Tilføj kolonne</button>
+        <button type="submit" style={{ ...btnSecondary, marginTop: 14 }} disabled={busy}>Add column</button>
       </form>
     </div>
   );
