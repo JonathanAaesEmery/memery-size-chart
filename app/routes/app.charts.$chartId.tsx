@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, Link, redirect } from "react-router";
+import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useNavigate, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -152,6 +152,9 @@ export default function ChartEditor() {
   const isNew = !chart;
   const [searchParams] = useSearchParams();
   const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
+  const navigate = useNavigate();
+  const detailsRef = React.useRef<HTMLFormElement>(null);
+  const cellsRef = React.useRef<HTMLFormElement>(null);
 
   function del(intent: string, extra: Record<string, string>) {
     if (!confirm("Are you sure?")) return;
@@ -166,9 +169,9 @@ export default function ChartEditor() {
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
-        <Link to={`/app/charts${qs}`} style={{ color: "#6d7175", textDecoration: "none", fontSize: 13 }}>
+        <button onClick={() => navigate(`/app/charts${qs}`)} style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}>
           ← Size Charts
-        </Link>
+        </button>
         <span style={{ color: "#c9cccf" }}>/</span>
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
           {isNew ? "New size chart" : chart.title}
@@ -185,7 +188,7 @@ export default function ChartEditor() {
       {/* ── Section 1: Details ── */}
       <div style={cardStyle}>
         <h2 style={sectionHeading}>Chart details</h2>
-        <form method="post">
+        <form ref={detailsRef}>
           <input type="hidden" name="intent" value="save-details" />
           <div style={fieldGrid}>
             <div style={fieldFull}>
@@ -216,7 +219,7 @@ export default function ChartEditor() {
             </div>
           </div>
           <div style={{ marginTop: 16 }}>
-            <button type="submit" style={btnPrimary}>
+            <button onClick={() => detailsRef.current && submit(new FormData(detailsRef.current), { method: "post" })} style={btnPrimary}>
               {isNew ? "Create chart" : "Save details"}
             </button>
           </div>
@@ -246,16 +249,13 @@ export default function ChartEditor() {
         <div style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <h2 style={{ ...sectionHeading, margin: 0 }}>Size table</h2>
-            <form method="post" style={{ display: "inline" }}>
-              <input type="hidden" name="intent" value="add-row" />
-              <button type="submit" style={btnSecondary}>+ Add row</button>
-            </form>
+            <button onClick={() => submit({ intent: "add-row" }, { method: "post" })} style={btnSecondary}>+ Add row</button>
           </div>
 
           {chart.rows.length === 0 ? (
             <p style={{ color: "#6d7175", fontSize: 14 }}>No rows yet. Click "Add row" to start.</p>
           ) : (
-            <form method="post">
+            <form ref={cellsRef}>
               <input type="hidden" name="intent" value="save-cells" />
               <div style={{ overflowX: "auto" }}>
                 <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
@@ -308,7 +308,7 @@ export default function ChartEditor() {
                 </table>
               </div>
               <div style={{ marginTop: 14 }}>
-                <button type="submit" style={btnPrimary}>Save table</button>
+                <button onClick={() => cellsRef.current && submit(new FormData(cellsRef.current), { method: "post" })} style={btnPrimary}>Save table</button>
               </div>
             </form>
           )}
@@ -322,6 +322,7 @@ export default function ChartEditor() {
 
 function ColumnCard({ col, submit, busy, onDelete }: any) {
   const [expanded, setExpanded] = React.useState(false);
+  const formRef = React.useRef<HTMLFormElement>(null);
 
   return (
     <div style={{ border: "1px solid #e1e3e5", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}>
@@ -338,7 +339,7 @@ function ColumnCard({ col, submit, busy, onDelete }: any) {
         </div>
       </div>
       {expanded && (
-        <form method="post" style={{ padding: "14px 16px", background: "#fff" }}>
+        <form ref={formRef} style={{ padding: "14px 16px", background: "#fff" }}>
           <input type="hidden" name="intent" value="update-column" />
           <input type="hidden" name="columnId" value={col.id} />
           <div style={fieldGrid}>
@@ -368,7 +369,7 @@ function ColumnCard({ col, submit, busy, onDelete }: any) {
               <input name="inputLabel" defaultValue={col.inputLabel || ""} style={inputStyle} placeholder="e.g. Bust/Chest (cm)" />
             </div>
           </div>
-          <button type="submit" style={{ ...btnSecondary, marginTop: 12 }}>Save column</button>
+          <button onClick={() => formRef.current && submit(new FormData(formRef.current), { method: "post" })} style={{ ...btnSecondary, marginTop: 12 }}>Save column</button>
         </form>
       )}
     </div>

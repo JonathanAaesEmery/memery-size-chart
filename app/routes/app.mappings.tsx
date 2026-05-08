@@ -1,5 +1,6 @@
+import React, { useRef } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, Form } from "react-router";
+import { useLoaderData, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -54,6 +55,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function MappingsPage() {
   const { mappings, charts } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher();
+  const chartIdRef = useRef<HTMLSelectElement>(null);
+  const handleRef = useRef<HTMLInputElement>(null);
+  const productIdRef = useRef<HTMLInputElement>(null);
+
+  const handleAdd = () => {
+    const chartId = chartIdRef.current?.value || "";
+    const productHandle = handleRef.current?.value?.trim() || "";
+    const productId = productIdRef.current?.value?.trim() || "";
+    if (!chartId || (!productHandle && !productId)) return;
+    fetcher.submit({ intent: "add", chartId, productHandle, productId }, { method: "post" });
+    if (handleRef.current) handleRef.current.value = "";
+    if (productIdRef.current) productIdRef.current.value = "";
+  };
+
+  const handleDelete = (id: string) => {
+    if (confirm("Remove this mapping?")) {
+      fetcher.submit({ intent: "delete", id }, { method: "post" });
+    }
+  };
 
   return (
     <s-page heading="Product Mappings">
@@ -70,44 +91,33 @@ export default function MappingsPage() {
 
       <s-section heading="Add mapping">
         {charts.length === 0 ? (
-          <s-paragraph>
-            <s-link href="/app/charts">Create a size chart first</s-link> before adding mappings.
-          </s-paragraph>
+          <s-paragraph>Create a size chart first before adding mappings.</s-paragraph>
         ) : (
-          <Form method="post">
-            <input type="hidden" name="intent" value="add" />
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                  Size chart
-                </label>
-                <select name="chartId" required style={selectStyle}>
-                  <option value="">Select a chart...</option>
-                  {charts.map((chart) => (
-                    <option key={chart.id} value={chart.id}>{chart.title}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                  Product handle
-                </label>
-                <input name="productHandle" style={inputStyle} placeholder="e.g. womens-slim-tee" />
-                <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#6d7175" }}>
-                  Found in the product URL: /products/<strong>product-handle</strong>
-                </p>
-              </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                  Or product ID
-                </label>
-                <input name="productId" style={inputStyle} placeholder="e.g. 123456789" />
-              </div>
-              <div>
-                <button type="submit" style={btnPrimaryStyle}>Add mapping</button>
-              </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div>
+              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Size chart</label>
+              <select ref={chartIdRef} style={selectStyle}>
+                <option value="">Select a chart...</option>
+                {charts.map((chart) => (
+                  <option key={chart.id} value={chart.id}>{chart.title}</option>
+                ))}
+              </select>
             </div>
-          </Form>
+            <div>
+              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Product handle</label>
+              <input ref={handleRef} style={inputStyle} placeholder="e.g. womens-slim-tee" />
+              <p style={{ margin: "4px 0 0", fontSize: "12px", color: "#6d7175" }}>
+                Found in the product URL: /products/<strong>product-handle</strong>
+              </p>
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Or product ID</label>
+              <input ref={productIdRef} style={inputStyle} placeholder="e.g. 123456789" />
+            </div>
+            <div>
+              <button onClick={handleAdd} style={btnPrimaryStyle}>Add mapping</button>
+            </div>
+          </div>
         )}
       </s-section>
 
@@ -133,11 +143,7 @@ export default function MappingsPage() {
                   {mapping.productHandle || mapping.productId || "unknown"}
                 </code>
               </div>
-              <Form method="post" onSubmit={(e) => { if (!confirm("Remove this mapping?")) e.preventDefault(); }}>
-                <input type="hidden" name="intent" value="delete" />
-                <input type="hidden" name="id" value={mapping.id} />
-                <button type="submit" style={btnDangerStyle}>Remove</button>
-              </Form>
+              <button onClick={() => handleDelete(mapping.id)} style={btnDangerStyle}>Remove</button>
             </div>
           ))
         )}

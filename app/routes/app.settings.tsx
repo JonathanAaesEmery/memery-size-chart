@@ -1,5 +1,6 @@
+import React, { useRef, useState } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useActionData } from "react-router";
+import { useLoaderData, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -50,81 +51,72 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function SettingsPage() {
   const { buttonText, buttonColor, defaultUnit } = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
+  const fetcher = useFetcher();
+  const [saved, setSaved] = useState(false);
+  const textRef = useRef<HTMLInputElement>(null);
+  const colorRef = useRef<HTMLInputElement>(null);
+  const unitRef = useRef<HTMLSelectElement>(null);
+
+  const handleSave = () => {
+    fetcher.submit(
+      {
+        buttonText: textRef.current?.value || "Size Guide",
+        buttonColor: colorRef.current?.value || "#000000",
+        defaultUnit: unitRef.current?.value || "cm",
+      },
+      { method: "post" }
+    );
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  };
+
   return (
     <s-page heading="Settings">
-      {actionData?.success && (
-        <s-banner tone="success">
-          Settings saved.
-        </s-banner>
+      {saved && (
+        <s-banner tone="success">Settings saved.</s-banner>
       )}
 
       <s-section heading="Button appearance">
-        <form method="POST">
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div>
-              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                Button text
-              </label>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div>
+            <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Button text</label>
+            <input
+              ref={textRef}
+              defaultValue={buttonText}
+              style={{ width: "100%", maxWidth: "300px", padding: "8px 12px", border: "1px solid #c9cccf", borderRadius: "4px", fontSize: "14px" }}
+              placeholder="Size Guide"
+            />
+          </div>
+          <div>
+            <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Button color</label>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <input
-                name="buttonText"
-                defaultValue={buttonText}
-                style={{
-                  width: "100%",
-                  maxWidth: "300px",
-                  padding: "8px 12px",
-                  border: "1px solid #c9cccf",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                }}
-                placeholder="Size Guide"
+                ref={colorRef}
+                type="color"
+                defaultValue={buttonColor}
+                style={{ width: "48px", height: "36px", padding: "2px", border: "1px solid #c9cccf", borderRadius: "4px", cursor: "pointer" }}
               />
-            </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                Button color
-              </label>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <input
-                  name="buttonColor"
-                  type="color"
-                  defaultValue={buttonColor}
-                  style={{ width: "48px", height: "36px", padding: "2px", border: "1px solid #c9cccf", borderRadius: "4px", cursor: "pointer" }}
-                />
-                <span style={{ fontSize: "13px", color: "#6d7175" }}>
-                  Color of the size guide button on product pages
-                </span>
-              </div>
-            </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                Default measurement unit
-              </label>
-              <select
-                name="defaultUnit"
-                defaultValue={defaultUnit}
-                style={{
-                  padding: "8px 12px",
-                  border: "1px solid #c9cccf",
-                  borderRadius: "4px",
-                  fontSize: "14px",
-                }}
-              >
-                <option value="cm">Centimeters (cm)</option>
-                <option value="inch">Inches (inch)</option>
-              </select>
-            </div>
-            <div>
-              <button type="submit" style={{ background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Save settings</button>
+              <span style={{ fontSize: "13px", color: "#6d7175" }}>Color of the size guide button on product pages</span>
             </div>
           </div>
-        </form>
+          <div>
+            <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Default measurement unit</label>
+            <select ref={unitRef} defaultValue={defaultUnit} style={{ padding: "8px 12px", border: "1px solid #c9cccf", borderRadius: "4px", fontSize: "14px" }}>
+              <option value="cm">Centimeters (cm)</option>
+              <option value="inch">Inches (inch)</option>
+            </select>
+          </div>
+          <div>
+            <button onClick={handleSave} style={{ background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
+              Save settings
+            </button>
+          </div>
+        </div>
       </s-section>
 
       <s-section heading="Theme setup" slot="aside">
         <s-paragraph>
-          To show size charts on your product pages, add the <strong>Size Chart Button</strong> block
-          to your theme.
+          To show size charts on your product pages, add the <strong>Size Chart Button</strong> block to your theme.
         </s-paragraph>
         <s-paragraph>
           Go to <strong>Online Store → Themes → Customize</strong>, open a product page,

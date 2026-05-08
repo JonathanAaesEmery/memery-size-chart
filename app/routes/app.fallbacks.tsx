@@ -1,5 +1,6 @@
+import React, { useRef } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, Form } from "react-router";
+import { useLoaderData, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -53,11 +54,31 @@ const TYPE_LABELS: Record<string, string> = {
   tag: "Product tag",
   vendor: "Vendor",
   product_type: "Product type",
-  collection: "Collection",
 };
 
 export default function FallbacksPage() {
   const { fallbacks, charts } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher();
+  const chartIdRef = useRef<HTMLSelectElement>(null);
+  const typeRef = useRef<HTMLSelectElement>(null);
+  const valueRef = useRef<HTMLInputElement>(null);
+  const priorityRef = useRef<HTMLInputElement>(null);
+
+  const handleAdd = () => {
+    const chartId = chartIdRef.current?.value || "";
+    const mappingType = typeRef.current?.value || "";
+    const mappingValue = valueRef.current?.value?.trim() || "";
+    const priority = priorityRef.current?.value || "0";
+    if (!chartId || !mappingType || !mappingValue) return;
+    fetcher.submit({ intent: "add", chartId, mappingType, mappingValue, priority }, { method: "post" });
+    if (valueRef.current) valueRef.current.value = "";
+  };
+
+  const handleDelete = (id: string) => {
+    if (confirm("Remove this fallback rule?")) {
+      fetcher.submit({ intent: "delete", id }, { method: "post" });
+    }
+  };
 
   return (
     <s-page heading="Fallback Rules">
@@ -74,53 +95,40 @@ export default function FallbacksPage() {
 
       <s-section heading="Add fallback rule">
         {charts.length === 0 ? (
-          <s-paragraph>
-            <s-link href="/app/charts">Create a size chart first</s-link>.
-          </s-paragraph>
+          <s-paragraph>Create a size chart first.</s-paragraph>
         ) : (
-          <Form method="post">
-            <input type="hidden" name="intent" value="add" />
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div>
-                <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                  Size chart
-                </label>
-                <select name="chartId" required style={selectStyle}>
-                  <option value="">Select a chart...</option>
-                  {charts.map((chart) => (
-                    <option key={chart.id} value={chart.id}>{chart.title}</option>
-                  ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div>
+              <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Size chart</label>
+              <select ref={chartIdRef} style={selectStyle}>
+                <option value="">Select a chart...</option>
+                {charts.map((chart) => (
+                  <option key={chart.id} value={chart.id}>{chart.title}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Match by</label>
+                <select ref={typeRef} style={selectStyle}>
+                  <option value="tag">Product tag</option>
+                  <option value="vendor">Vendor</option>
+                  <option value="product_type">Product type</option>
                 </select>
               </div>
-              <div style={{ display: "flex", gap: "12px" }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                    Match by
-                  </label>
-                  <select name="mappingType" required style={selectStyle}>
-                    <option value="tag">Product tag</option>
-                    <option value="vendor">Vendor</option>
-                    <option value="product_type">Product type</option>
-                  </select>
-                </div>
-                <div style={{ flex: 2 }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                    Value
-                  </label>
-                  <input name="mappingValue" required style={inputStyle} placeholder="e.g. womens, Memery, T-Shirts" />
-                </div>
-                <div style={{ width: "80px" }}>
-                  <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>
-                    Priority
-                  </label>
-                  <input name="priority" type="number" defaultValue="0" style={inputStyle} />
-                </div>
+              <div style={{ flex: 2 }}>
+                <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Value</label>
+                <input ref={valueRef} style={inputStyle} placeholder="e.g. womens, Memery, T-Shirts" />
               </div>
-              <div>
-                <button type="submit" style={btnPrimaryStyle}>Add rule</button>
+              <div style={{ width: "80px" }}>
+                <label style={{ display: "block", marginBottom: "4px", fontWeight: 500 }}>Priority</label>
+                <input ref={priorityRef} type="number" defaultValue="0" style={inputStyle} />
               </div>
             </div>
-          </Form>
+            <div>
+              <button onClick={handleAdd} style={btnPrimaryStyle}>Add rule</button>
+            </div>
+          </div>
         )}
       </s-section>
 
@@ -152,11 +160,7 @@ export default function FallbacksPage() {
                   priority: {fb.priority}
                 </span>
               </div>
-              <Form method="post" onSubmit={(e) => { if (!confirm("Remove this fallback rule?")) e.preventDefault(); }}>
-                <input type="hidden" name="intent" value="delete" />
-                <input type="hidden" name="id" value={fb.id} />
-                <button type="submit" style={btnDangerStyle}>Remove</button>
-              </Form>
+              <button onClick={() => handleDelete(fb.id)} style={btnDangerStyle}>Remove</button>
             </div>
           ))
         )}
