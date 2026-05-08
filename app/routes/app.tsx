@@ -1,6 +1,6 @@
 import React from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, useRouteError, NavLink } from "react-router";
+import { Outlet, useRouteError, NavLink, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
@@ -10,6 +10,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function App() {
+  const [searchParams] = useSearchParams();
+
+  // These params must survive every navigation so authenticate.admin() can find the shop.
+  const shop = searchParams.get("shop") || "";
+  const host = searchParams.get("host") || "";
+  const qs = [shop && `shop=${shop}`, host && `host=${host}`].filter(Boolean).join("&");
+  const p = (path: string) => (qs ? `${path}?${qs}` : path);
+
   return (
     <div style={{ minHeight: "100vh", background: "#f6f6f7", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
       <nav style={{
@@ -21,10 +29,10 @@ export default function App() {
         alignItems: "center",
         height: 52,
       }}>
-        <NavLink to="/app/charts" style={navLinkStyle}>Size Charts</NavLink>
-        <NavLink to="/app/mappings" style={navLinkStyle}>Product Mappings</NavLink>
-        <NavLink to="/app/fallbacks" style={navLinkStyle}>Fallback Rules</NavLink>
-        <NavLink to="/app/settings" style={navLinkStyle}>Settings</NavLink>
+        <NavLink to={p("/app/charts")} style={navLinkStyle}>Size Charts</NavLink>
+        <NavLink to={p("/app/mappings")} style={navLinkStyle}>Product Mappings</NavLink>
+        <NavLink to={p("/app/fallbacks")} style={navLinkStyle}>Fallback Rules</NavLink>
+        <NavLink to={p("/app/settings")} style={navLinkStyle}>Settings</NavLink>
       </nav>
       <Outlet />
     </div>
