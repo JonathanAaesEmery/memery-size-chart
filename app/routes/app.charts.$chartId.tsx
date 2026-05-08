@@ -216,7 +216,7 @@ export default function ChartEditor() {
             </div>
           </div>
           <div style={{ marginTop: 16 }}>
-            <button type="submit" style={btnPrimary} disabled={busy}>
+            <button type="submit" style={btnPrimary}>
               {isNew ? "Create chart" : "Save details"}
             </button>
           </div>
@@ -248,7 +248,7 @@ export default function ChartEditor() {
             <h2 style={{ ...sectionHeading, margin: 0 }}>Size table</h2>
             <form method="post" style={{ display: "inline" }}>
               <input type="hidden" name="intent" value="add-row" />
-              <button type="submit" style={btnSecondary} disabled={busy}>+ Add row</button>
+              <button type="submit" style={btnSecondary}>+ Add row</button>
             </form>
           </div>
 
@@ -308,7 +308,7 @@ export default function ChartEditor() {
                 </table>
               </div>
               <div style={{ marginTop: 14 }}>
-                <button type="submit" style={btnPrimary} disabled={busy}>Save table</button>
+                <button type="submit" style={btnPrimary}>Save table</button>
               </div>
             </form>
           )}
@@ -368,7 +368,7 @@ function ColumnCard({ col, submit, busy, onDelete }: any) {
               <input name="inputLabel" defaultValue={col.inputLabel || ""} style={inputStyle} placeholder="e.g. Bust/Chest (cm)" />
             </div>
           </div>
-          <button type="submit" style={{ ...btnSecondary, marginTop: 12 }} disabled={busy}>Save column</button>
+          <button type="submit" style={{ ...btnSecondary, marginTop: 12 }}>Save column</button>
         </form>
       )}
     </div>
@@ -439,7 +439,7 @@ function AddColumnForm({ submit, busy }: any) {
             <input type="hidden" name="customerInputEnabled" value="false" />
           )}
         </div>
-        <button type="submit" style={{ ...btnSecondary, marginTop: 14 }} disabled={busy}>Add column</button>
+        <button type="submit" style={{ ...btnSecondary, marginTop: 14 }}>Add column</button>
       </form>
     </div>
   );

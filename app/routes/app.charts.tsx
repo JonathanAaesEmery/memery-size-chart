@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useNavigation, Form, Link, useSearchParams } from "react-router";
+import { useLoaderData, Form, Link, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -44,8 +44,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
-  const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
   const [searchParams] = useSearchParams();
   const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
 
@@ -96,14 +94,14 @@ export default function ChartsPage() {
                 <Form method="post" style={{ display: "inline" }}>
                   <input type="hidden" name="intent" value="toggle" />
                   <input type="hidden" name="id" value={chart.id} />
-                  <button type="submit" style={btnSecondaryStyle} disabled={isLoading}>
+                  <button type="submit" style={btnSecondaryStyle}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>
                 </Form>
                 <Form method="post" style={{ display: "inline" }} onSubmit={(e) => { if (!confirm(`Delete "${chart.title}"?`)) e.preventDefault(); }}>
                   <input type="hidden" name="intent" value="delete" />
                   <input type="hidden" name="id" value={chart.id} />
-                  <button type="submit" style={btnDangerStyle} disabled={isLoading}>Delete</button>
+                  <button type="submit" style={btnDangerStyle}>Delete</button>
                 </Form>
               </div>
             </div>
