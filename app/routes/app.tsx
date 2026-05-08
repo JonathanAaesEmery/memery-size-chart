@@ -1,17 +1,16 @@
 import React from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, useRouteError, NavLink, useSearchParams, useLoaderData } from "react-router";
+import { Outlet, useRouteError, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  return null;
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
 
   const shop = searchParams.get("shop") || "";
@@ -31,10 +30,10 @@ export default function App() {
           alignItems: "center",
           height: 52,
         }}>
-          <NavLink to={p("/app/charts")} style={navLinkStyle}>Size Charts</NavLink>
-          <NavLink to={p("/app/mappings")} style={navLinkStyle}>Product Mappings</NavLink>
-          <NavLink to={p("/app/fallbacks")} style={navLinkStyle}>Fallback Rules</NavLink>
-          <NavLink to={p("/app/settings")} style={navLinkStyle}>Settings</NavLink>
+          <a href={p("/app/charts")} style={navStyle}>Size Charts</a>
+          <a href={p("/app/mappings")} style={navStyle}>Product Mappings</a>
+          <a href={p("/app/fallbacks")} style={navStyle}>Fallback Rules</a>
+          <a href={p("/app/settings")} style={navStyle}>Settings</a>
         </nav>
         <Outlet />
       </div>
@@ -42,17 +41,14 @@ export default function App() {
   );
 }
 
-function navLinkStyle({ isActive }: { isActive: boolean }) {
-  return {
-    padding: "6px 12px",
-    borderRadius: 6,
-    fontSize: 14,
-    textDecoration: "none",
-    color: isActive ? "#1a1a1a" : "#6d7175",
-    fontWeight: isActive ? 600 : 400,
-    background: isActive ? "#f1f1f1" : "transparent",
-  } as React.CSSProperties;
-}
+const navStyle: React.CSSProperties = {
+  padding: "6px 12px",
+  borderRadius: 6,
+  fontSize: 14,
+  textDecoration: "none",
+  color: "#6d7175",
+  fontWeight: 400,
+};
 
 export function ErrorBoundary() {
   return boundary.error(useRouteError());

@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useNavigate, redirect } from "react-router";
+import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -152,7 +152,6 @@ export default function ChartEditor() {
   const isNew = !chart;
   const [searchParams] = useSearchParams();
   const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
-  const navigate = useNavigate();
   const detailsRef = React.useRef<HTMLFormElement>(null);
   const cellsRef = React.useRef<HTMLFormElement>(null);
 
@@ -169,9 +168,9 @@ export default function ChartEditor() {
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
-        <button onClick={() => navigate(`/app/charts${qs}`)} style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}>
+        <a href={`/app/charts${qs}`} style={{ color: "#6d7175", textDecoration: "none", fontSize: 13 }}>
           ← Size Charts
-        </button>
+        </a>
         <span style={{ color: "#c9cccf" }}>/</span>
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
           {isNew ? "New size chart" : chart.title}

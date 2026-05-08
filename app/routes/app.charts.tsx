@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSearchParams, useNavigate, useFetcher } from "react-router";
+import { useLoaderData, useSearchParams, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -46,11 +46,7 @@ export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
-  const navigate = useNavigate();
   const fetcher = useFetcher();
-
-  const handleEdit = (id: string) => navigate(`/app/charts/${id}${qs}`);
-  const handleNew = () => navigate(`/app/charts/new${qs}`);
 
   const handleToggle = (id: string) => {
     fetcher.submit({ intent: "toggle", id }, { method: "post" });
@@ -66,13 +62,13 @@ export default function ChartsPage() {
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>Size Charts</h1>
-        <button onClick={handleNew} style={btnPrimaryStyle}>+ Create chart</button>
+        <a href={`/app/charts/new${qs}`} style={btnPrimaryStyle}>+ Create chart</a>
       </div>
 
       {charts.length === 0 ? (
         <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, padding: "40px 24px", textAlign: "center" }}>
           <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-          <button onClick={handleNew} style={btnPrimaryStyle}>Create your first chart</button>
+          <a href={`/app/charts/new${qs}`} style={btnPrimaryStyle}>Create your first chart</a>
         </div>
       ) : (
         <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -105,7 +101,7 @@ export default function ChartsPage() {
                 </span>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button onClick={() => handleEdit(chart.id)} style={btnSecondaryStyle}>Edit</button>
+                <a href={`/app/charts/${chart.id}${qs}`} style={btnSecondaryStyle}>Edit</a>
                 <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                   {chart.isActive ? "Deactivate" : "Activate"}
                 </button>
