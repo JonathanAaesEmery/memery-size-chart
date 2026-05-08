@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model SizeChart {
+  id               String   @id @default(cuid())
+  shop             String
+  title            String
+  description      String?
+  defaultUnit      String   @default("cm")
+  imageLayout      String   @default("above")
+  instructionsHtml String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  columns         SizeChartColumn[]
+  rows            SizeChartRow[]
+  images          SizeChartImage[]
+  productMappings ProductMapping[]
+  fallbackMappings FallbackMapping[]
+}
+
+model SizeChartColumn {
+  id           String @id @default(cuid())
+  chartId      String
+  chart        SizeChart @relation(fields: [chartId], references: [id], onDelete: Cascade)
+  name         String
+  columnType   String @default("measurement")
+  displayOrder Int    @default(0)
+
+  cells SizeChartCell[]
+}
+
+model SizeChartRow {
+  id           String @id @default(cuid())
+  chartId      String
+  chart        SizeChart @relation(fields: [chartId], references: [id], onDelete: Cascade)
+  displayOrder Int    @default(0)
+
+  cells SizeChartCell[]
+}
+
+model SizeChartCell {
+  id       String @id @default(cuid())
+  rowId    String
+  row      SizeChartRow    @relation(fields: [rowId], references: [id], onDelete: Cascade)
+  columnId String
+  column   SizeChartColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  value    String?
+
+  @@unique([rowId, columnId])
+}
+
+model SizeChartImage {
+  id           String @id @default(cuid())
+  chartId      String
+  chart        SizeChart @relation(fields: [chartId], references: [id], onDelete: Cascade)
+  url          String
+  altText      String?
+  displayOrder Int    @default(0)
+}
+
+model ProductMapping {
+  id            String    @id @default(cuid())
+  shop          String
+  chartId       String
+  chart         SizeChart @relation(fields: [chartId], references: [id], onDelete: Cascade)
+  productHandle String?
+  productId     String?
+  createdAt     DateTime  @default(now())
+}
+
+model FallbackMapping {
+  id           String    @id @default(cuid())
+  shop         String
+  chartId      String
+  chart        SizeChart @relation(fields: [chartId], references: [id], onDelete: Cascade)
+  mappingType  String
+  mappingValue String
+  priority     Int       @default(0)
+  createdAt    DateTime  @default(now())
+}
+
+model GlobalSettings {
+  id           String @id @default(cuid())
+  shop         String
+  settingKey   String
+  settingValue String?
+
+  @@unique([shop, settingKey])
+}

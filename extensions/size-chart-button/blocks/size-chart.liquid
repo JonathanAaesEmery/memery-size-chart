@@ -1,0 +1,220 @@
+{% comment %}
+  Size Chart Button — loads chart in a modal via iframe
+{% endcomment %}
+
+{% assign app_url = app.url %}
+
+<div id="size-chart-wrapper-{{ block.id }}" style="margin: 8px 0;">
+  <button
+    id="size-chart-btn-{{ block.id }}"
+    type="button"
+    style="
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      color: {{ block.settings.button_color | default: '#000000' }};
+      font-family: inherit;
+    "
+  >
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M2 12h20M2 6h20M2 18h20M7 3v3M12 3v3M17 3v3M7 18v3M12 18v3M17 18v3"/>
+    </svg>
+    {{ block.settings.button_text | default: 'Size Guide' }}
+  </button>
+
+  <!-- Modal overlay -->
+  <div
+    id="size-chart-modal-{{ block.id }}"
+    style="
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    "
+  >
+    <div style="
+      background: #fff;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 640px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    ">
+      <div style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid #e1e3e5;
+      ">
+        <strong style="font-size: 16px;">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
+        <button
+          id="size-chart-close-{{ block.id }}"
+          type="button"
+          style="
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+            color: #6d7175;
+            padding: 4px;
+          "
+          aria-label="Close"
+        >✕</button>
+      </div>
+      <div id="size-chart-body-{{ block.id }}" style="overflow-y: auto; padding: 20px; flex: 1;">
+        <p style="color: #6d7175; font-size: 14px;">Loading...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var blockId = '{{ block.id }}';
+  var appUrl = '{{ app_url }}';
+  var shop = '{{ shop.permanent_domain }}';
+  var productHandle = '{{ product.handle }}';
+  var productId = '{{ product.id }}';
+  var productTags = '{{ product.tags }}';
+  var vendor = encodeURIComponent('{{ product.vendor }}');
+  var productType = encodeURIComponent('{{ product.type }}');
+
+  var btn = document.getElementById('size-chart-btn-' + blockId);
+  var modal = document.getElementById('size-chart-modal-' + blockId);
+  var closeBtn = document.getElementById('size-chart-close-' + blockId);
+  var body = document.getElementById('size-chart-body-' + blockId);
+
+  if (!appUrl) {
+    btn.style.display = 'none';
+    return;
+  }
+
+  var loaded = false;
+
+  function loadChart() {
+    if (loaded) return;
+    loaded = true;
+
+    var tagsEncoded = productTags.split(',').map(function(t) { return encodeURIComponent(t.trim()); }).join(',');
+    var url = appUrl + '/api/size-chart?shop=' + shop
+      + '&product_handle=' + encodeURIComponent(productHandle)
+      + '&product_id=' + encodeURIComponent(productId)
+      + '&tags=' + tagsEncoded
+      + '&vendor=' + vendor
+      + '&product_type=' + productType;
+
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.chart) {
+          btn.style.display = 'none';
+          return;
+        }
+        renderChart(data.chart, data.settings || {});
+      })
+      .catch(function(err) {
+        body.innerHTML = '<p style="color:#d72c0d;font-size:14px;">Could not load size chart (' + err.message + ')</p>';
+      });
+  }
+
+  function renderChart(chart, settings) {
+    var html = '';
+
+    if (chart.description) {
+      html += '<p style="margin:0 0 16px;color:#6d7175;font-size:14px;">' + escapeHtml(chart.description) + '</p>';
+    }
+
+    if (chart.columns && chart.columns.length > 0 && chart.rows && chart.rows.length > 0) {
+      var unit = settings.default_unit || chart.defaultUnit || 'cm';
+      html += '<div style="overflow-x:auto;">';
+      html += '<table style="border-collapse:collapse;width:100%;font-size:13px;">';
+      html += '<thead><tr>';
+      chart.columns.forEach(function(col) {
+        html += '<th style="padding:8px 12px;border:1px solid #e1e3e5;background:#f6f6f7;text-align:left;white-space:nowrap;">';
+        html += escapeHtml(col.name);
+        if (col.columnType === 'measurement') html += ' <span style="color:#6d7175;font-weight:normal;">(' + unit + ')</span>';
+        html += '</th>';
+      });
+      html += '</tr></thead><tbody>';
+      chart.rows.forEach(function(row) {
+        html += '<tr>';
+        chart.columns.forEach(function(col) {
+          var cell = (row.cells || []).find(function(c) { return c.columnId === col.id; });
+          html += '<td style="padding:8px 12px;border:1px solid #e1e3e5;">' + escapeHtml((cell && cell.value) || '') + '</td>';
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    if (chart.instructionsHtml) {
+      html += '<div style="margin-top:16px;font-size:13px;color:#6d7175;">' + chart.instructionsHtml + '</div>';
+    }
+
+    body.innerHTML = html || '<p style="color:#6d7175;font-size:14px;">No size data available.</p>';
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  btn.addEventListener('click', function() {
+    modal.style.display = 'flex';
+    loadChart();
+  });
+
+  closeBtn.addEventListener('click', function() {
+    modal.style.display = 'none';
+  });
+
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) modal.style.display = 'none';
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') modal.style.display = 'none';
+  });
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Size Chart Button",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "Button text",
+      "default": "Size Guide"
+    },
+    {
+      "type": "color",
+      "id": "button_color",
+      "label": "Button color",
+      "default": "#000000"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Size Chart Button"
+    }
+  ]
+}
+{% endschema %}
