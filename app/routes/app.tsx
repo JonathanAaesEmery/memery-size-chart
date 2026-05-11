@@ -1,4 +1,12 @@
 import React from "react";
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      "ui-nav-menu": React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    }
+  }
+}
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { Outlet, useRouteError, useSearchParams, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
