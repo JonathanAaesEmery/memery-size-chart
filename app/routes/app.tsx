@@ -21,35 +21,19 @@ export default function App() {
 
   return (
     <AppProvider embedded apiKey={apiKey}>
+      {/* ui-nav-menu is handled natively by App Bridge for proper client-side navigation */}
+      <ui-nav-menu>
+        <a href={p("/app/charts")} rel="home">Size Charts</a>
+        <a href={p("/app/mappings")}>Product Mappings</a>
+        <a href={p("/app/fallbacks")}>Fallback Rules</a>
+        <a href={p("/app/settings")}>Settings</a>
+      </ui-nav-menu>
       <div style={{ minHeight: "100vh", background: "#f6f6f7", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
-        <nav style={{
-          background: "#fff",
-          borderBottom: "1px solid #e1e3e5",
-          padding: "0 20px",
-          display: "flex",
-          gap: 4,
-          alignItems: "center",
-          height: 52,
-        }}>
-          <a href={p("/app/charts")} style={navStyle}>Size Charts</a>
-          <a href={p("/app/mappings")} style={navStyle}>Product Mappings</a>
-          <a href={p("/app/fallbacks")} style={navStyle}>Fallback Rules</a>
-          <a href={p("/app/settings")} style={navStyle}>Settings</a>
-        </nav>
         <Outlet />
       </div>
     </AppProvider>
   );
 }
-
-const navStyle: React.CSSProperties = {
-  padding: "6px 12px",
-  borderRadius: 6,
-  fontSize: 14,
-  textDecoration: "none",
-  color: "#6d7175",
-  fontWeight: 400,
-};
 
 export function ErrorBoundary() {
   return boundary.error(useRouteError());

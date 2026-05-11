@@ -168,9 +168,16 @@ export default function ChartEditor() {
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
-        <a href={`/app/charts${qs}`} style={{ color: "#6d7175", textDecoration: "none", fontSize: 13 }}>
+        <button
+          onClick={() => {
+            const shopify = (window as any).shopify;
+            if (shopify?.navigate) shopify.navigate(`/app/charts${qs}`);
+            else window.location.href = `/app/charts${qs}`;
+          }}
+          style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}
+        >
           ← Size Charts
-        </a>
+        </button>
         <span style={{ color: "#c9cccf" }}>/</span>
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
           {isNew ? "New size chart" : chart.title}

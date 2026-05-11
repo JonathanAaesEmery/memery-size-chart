@@ -48,6 +48,14 @@ export default function ChartsPage() {
   const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const fetcher = useFetcher();
 
+  const shopifyNavigate = (url: string) => {
+    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
+      (window as any).shopify.navigate(url);
+    } else {
+      window.location.href = url;
+    }
+  };
+
   const handleToggle = (id: string) => {
     fetcher.submit({ intent: "toggle", id }, { method: "post" });
   };
@@ -62,13 +70,13 @@ export default function ChartsPage() {
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>Size Charts</h1>
-        <a href={`/app/charts/new${qs}`} style={btnPrimaryStyle}>+ Create chart</a>
+        <button onClick={() => shopifyNavigate(`/app/charts/new${qs}`)} style={btnPrimaryStyle}>+ Create chart</button>
       </div>
 
       {charts.length === 0 ? (
         <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, padding: "40px 24px", textAlign: "center" }}>
           <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-          <a href={`/app/charts/new${qs}`} style={btnPrimaryStyle}>Create your first chart</a>
+          <button onClick={() => shopifyNavigate(`/app/charts/new${qs}`)} style={btnPrimaryStyle}>Create your first chart</button>
         </div>
       ) : (
         <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -101,7 +109,7 @@ export default function ChartsPage() {
                 </span>
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <a href={`/app/charts/${chart.id}${qs}`} style={btnSecondaryStyle}>Edit</a>
+                <button onClick={() => shopifyNavigate(`/app/charts/${chart.id}${qs}`)} style={btnSecondaryStyle}>Edit</button>
                 <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                   {chart.isActive ? "Deactivate" : "Activate"}
                 </button>
