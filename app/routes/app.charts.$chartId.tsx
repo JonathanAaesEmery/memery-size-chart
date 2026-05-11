@@ -170,21 +170,24 @@ export default function ChartEditor() {
     (c) => c.columnType === "measurement" && (c.isMatchingKey || c.customerInputEnabled)
   );
 
+  const goBack = () => {
+    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
+      (window as any).shopify.navigate("/app/charts");
+    } else {
+      const u = new URL(window.location.href);
+      u.pathname = "/app/charts";
+      window.location.href = u.toString();
+    }
+  };
+
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
-        <button
-          onClick={() => { const u = new URL(window.location.href); u.pathname = "/app/charts"; window.location.href = u.toString(); }}
-          style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}
-        >
-          ← Size Charts
+    <s-page heading={isNew ? "New size chart" : chart.title}>
+      <div slot="breadcrumbs">
+        <button onClick={goBack} style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}>
+          Size Charts
         </button>
-        <span style={{ color: "#c9cccf" }}>/</span>
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
-          {isNew ? "New size chart" : chart.title}
-        </h1>
       </div>
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 0 24px" }}>
 
       {actionData && "error" in actionData && (
         <div style={bannerStyle("error")}>{actionData.error}</div>
@@ -322,7 +325,8 @@ export default function ChartEditor() {
           )}
         </div>
       )}
-    </div>
+      </div>
+    </s-page>
   );
 }
 

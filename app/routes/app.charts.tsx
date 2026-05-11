@@ -58,12 +58,15 @@ export default function ChartsPage() {
   const fetcher = useFetcher();
 
   const goTo = (path: string) => {
-    // Full page reload — preserves all URL params (embedded, shop, host, id_token)
-    // so Shopify Admin auth works correctly. React Router client-side nav is
-    // overridden by Shopify Admin, so we use window.location instead.
-    const url = new URL(window.location.href);
-    url.pathname = path;
-    window.location.href = url.toString();
+    // Use App Bridge to tell Shopify Admin about the navigation.
+    // This prevents Admin from resetting the iframe.
+    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
+      (window as any).shopify.navigate(path);
+    } else {
+      const url = new URL(window.location.href);
+      url.pathname = path;
+      window.location.href = url.toString();
+    }
   };
 
   const handleToggle = (id: string) => {
