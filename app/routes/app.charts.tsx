@@ -67,59 +67,60 @@ export default function ChartsPage() {
   };
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600 }}>Size Charts</h1>
-        <button onClick={() => shopifyNavigate(`/app/charts/new${qs}`)} style={btnPrimaryStyle}>+ Create chart</button>
+    <s-page heading="Size Charts">
+      <div slot="primary-action">
+        <button onClick={() => { console.log("Create chart clicked"); shopifyNavigate(`/app/charts/new${qs}`); }} style={btnPrimaryStyle}>+ Create chart</button>
       </div>
 
-      {charts.length === 0 ? (
-        <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, padding: "40px 24px", textAlign: "center" }}>
-          <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-          <button onClick={() => shopifyNavigate(`/app/charts/new${qs}`)} style={btnPrimaryStyle}>Create your first chart</button>
-        </div>
-      ) : (
-        <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
-          {charts.map((chart, i) => (
-            <div
-              key={chart.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "14px 20px",
-                borderBottom: i < charts.length - 1 ? "1px solid #e1e3e5" : "none",
-                background: "#fff",
-              }}
-            >
-              <div>
-                <strong style={{ fontSize: 15 }}>{chart.title}</strong>
-                <span style={{
-                  marginLeft: 10,
-                  padding: "2px 8px",
-                  borderRadius: 10,
-                  fontSize: 12,
-                  background: chart.isActive ? "#d4edda" : "#f8d7da",
-                  color: chart.isActive ? "#155724" : "#721c24",
-                }}>
-                  {chart.isActive ? "Active" : "Inactive"}
-                </span>
-                <span style={{ marginLeft: 10, color: "#6d7175", fontSize: 13 }}>
-                  {chart._count.productMappings} product{chart._count.productMappings !== 1 ? "s" : ""}
-                </span>
+      <s-section>
+        {charts.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "24px 0" }}>
+            <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
+            <button onClick={() => { console.log("Create first clicked"); shopifyNavigate(`/app/charts/new${qs}`); }} style={btnPrimaryStyle}>Create your first chart</button>
+          </div>
+        ) : (
+          <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
+            {charts.map((chart, i) => (
+              <div
+                key={chart.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "14px 20px",
+                  borderBottom: i < charts.length - 1 ? "1px solid #e1e3e5" : "none",
+                  background: "#fff",
+                }}
+              >
+                <div>
+                  <strong style={{ fontSize: 15 }}>{chart.title}</strong>
+                  <span style={{
+                    marginLeft: 10,
+                    padding: "2px 8px",
+                    borderRadius: 10,
+                    fontSize: 12,
+                    background: chart.isActive ? "#d4edda" : "#f8d7da",
+                    color: chart.isActive ? "#155724" : "#721c24",
+                  }}>
+                    {chart.isActive ? "Active" : "Inactive"}
+                  </span>
+                  <span style={{ marginLeft: 10, color: "#6d7175", fontSize: 13 }}>
+                    {chart._count.productMappings} product{chart._count.productMappings !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button onClick={() => { console.log("Edit clicked", chart.id); shopifyNavigate(`/app/charts/${chart.id}${qs}`); }} style={btnSecondaryStyle}>Edit</button>
+                  <button onClick={() => { console.log("Toggle clicked", chart.id); handleToggle(chart.id); }} style={btnSecondaryStyle}>
+                    {chart.isActive ? "Deactivate" : "Activate"}
+                  </button>
+                  <button onClick={() => { console.log("Delete clicked", chart.id); handleDelete(chart.id, chart.title); }} style={btnDangerStyle}>Delete</button>
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <button onClick={() => shopifyNavigate(`/app/charts/${chart.id}${qs}`)} style={btnSecondaryStyle}>Edit</button>
-                <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
-                  {chart.isActive ? "Deactivate" : "Activate"}
-                </button>
-                <button onClick={() => handleDelete(chart.id, chart.title)} style={btnDangerStyle}>Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+      </s-section>
+    </s-page>
   );
 }
 
