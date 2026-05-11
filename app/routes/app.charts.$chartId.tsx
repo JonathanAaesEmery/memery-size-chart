@@ -175,7 +175,7 @@ export default function ChartEditor() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
         <button
-          onClick={() => fetcher.submit({ intent: "go-back" }, { method: "post" })}
+          onClick={() => { const u = new URL(window.location.href); u.pathname = "/app/charts"; window.location.href = u.toString(); }}
           style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}
         >
           ← Size Charts

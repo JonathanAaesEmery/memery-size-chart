@@ -55,9 +55,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
-  const [searchParams] = useSearchParams();
-  const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const fetcher = useFetcher();
+
+  const goTo = (path: string) => {
+    // Full page reload — preserves all URL params (embedded, shop, host, id_token)
+    // so Shopify Admin auth works correctly. React Router client-side nav is
+    // overridden by Shopify Admin, so we use window.location instead.
+    const url = new URL(window.location.href);
+    url.pathname = path;
+    window.location.href = url.toString();
+  };
 
   const handleToggle = (id: string) => {
     fetcher.submit({ intent: "toggle", id }, { method: "post" });
@@ -72,14 +79,14 @@ export default function ChartsPage() {
   return (
     <s-page heading="Size Charts">
       <div slot="primary-action">
-        <button onClick={() => fetcher.submit({ intent: "go-new" }, { method: "post" })} style={btnPrimaryStyle}>+ Create chart</button>
+        <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>+ Create chart</button>
       </div>
 
       <s-section>
         {charts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "24px 0" }}>
             <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-            <button onClick={() => fetcher.submit({ intent: "go-new" }, { method: "post" })} style={btnPrimaryStyle}>Create your first chart</button>
+            <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>Create your first chart</button>
           </div>
         ) : (
           <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -112,7 +119,7 @@ export default function ChartsPage() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button onClick={() => fetcher.submit({ intent: "go-edit", id: chart.id }, { method: "post" })} style={btnSecondaryStyle}>Edit</button>
+                  <button onClick={() => goTo(`/app/charts/${chart.id}`)} style={btnSecondaryStyle}>Edit</button>
                   <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>
