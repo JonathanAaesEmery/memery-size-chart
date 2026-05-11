@@ -55,41 +55,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
-  const fetcher = useFetcher();
+  const navFetcher = useFetcher();
+  const mutFetcher = useFetcher();
 
-  const goTo = (path: string) => {
-    // Use App Bridge to tell Shopify Admin about the navigation.
-    // This prevents Admin from resetting the iframe.
-    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
-      (window as any).shopify.navigate(path);
-    } else {
-      const url = new URL(window.location.href);
-      url.pathname = path;
-      window.location.href = url.toString();
-    }
-  };
+  const goNew = () => navFetcher.submit({ intent: "go-new" }, { method: "post" });
+  const goEdit = (id: string) => navFetcher.submit({ intent: "go-edit", id }, { method: "post" });
 
   const handleToggle = (id: string) => {
-    fetcher.submit({ intent: "toggle", id }, { method: "post" });
+    mutFetcher.submit({ intent: "toggle", id }, { method: "post" });
   };
 
   const handleDelete = (id: string, title: string) => {
     if (confirm(`Delete "${title}"?`)) {
-      fetcher.submit({ intent: "delete", id }, { method: "post" });
+      mutFetcher.submit({ intent: "delete", id }, { method: "post" });
     }
   };
 
   return (
     <s-page heading="Size Charts">
       <div slot="primary-action">
-        <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>+ Create chart</button>
+        <button onClick={goNew} style={btnPrimaryStyle}>+ Create chart</button>
       </div>
 
       <s-section>
         {charts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "24px 0" }}>
             <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-            <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>Create your first chart</button>
+            <button onClick={goNew} style={btnPrimaryStyle}>Create your first chart</button>
           </div>
         ) : (
           <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -122,7 +114,7 @@ export default function ChartsPage() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button onClick={() => goTo(`/app/charts/${chart.id}`)} style={btnSecondaryStyle}>Edit</button>
+                  <button onClick={() => goEdit(chart.id)} style={btnSecondaryStyle}>Edit</button>
                   <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>

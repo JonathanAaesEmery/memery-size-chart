@@ -171,13 +171,7 @@ export default function ChartEditor() {
   );
 
   const goBack = () => {
-    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
-      (window as any).shopify.navigate("/app/charts");
-    } else {
-      const u = new URL(window.location.href);
-      u.pathname = "/app/charts";
-      window.location.href = u.toString();
-    }
+    fetcher.submit({ intent: "go-back" }, { method: "post" });
   };
 
   return (
