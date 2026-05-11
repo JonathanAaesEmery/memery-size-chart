@@ -36,9 +36,7 @@ export default function App() {
         <a href={p("/app/fallbacks")}>Fallback Rules</a>
         <a href={p("/app/settings")}>Settings</a>
       </ui-nav-menu>
-      <div style={{ minHeight: "100vh", background: "#f6f6f7", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
-        <Outlet />
-      </div>
+      <Outlet />
     </AppProvider>
   );
 }
