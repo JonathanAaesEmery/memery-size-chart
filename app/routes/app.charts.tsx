@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSearchParams, useFetcher, Link } from "react-router";
+import { useLoaderData, useSearchParams, useFetcher, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -25,6 +25,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
+
+  if (intent === "go-new") {
+    const url = new URL(request.url);
+    return redirect(`/app/charts/new${url.search}`);
+  }
+
+  if (intent === "go-edit") {
+    const id = formData.get("id") as string;
+    const url = new URL(request.url);
+    return redirect(`/app/charts/${id}${url.search}`);
+  }
 
   if (intent === "delete") {
     const id = formData.get("id") as string;
@@ -61,14 +72,14 @@ export default function ChartsPage() {
   return (
     <s-page heading="Size Charts">
       <div slot="primary-action">
-        <Link to={`/app/charts/new${qs}`} style={{ ...btnPrimaryStyle, textDecoration: "none", display: "inline-block" }}>+ Create chart</Link>
+        <button onClick={() => fetcher.submit({ intent: "go-new" }, { method: "post" })} style={btnPrimaryStyle}>+ Create chart</button>
       </div>
 
       <s-section>
         {charts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "24px 0" }}>
             <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-            <Link to={`/app/charts/new${qs}`} style={{ ...btnPrimaryStyle, textDecoration: "none", display: "inline-block" }}>Create your first chart</Link>
+            <button onClick={() => fetcher.submit({ intent: "go-new" }, { method: "post" })} style={btnPrimaryStyle}>Create your first chart</button>
           </div>
         ) : (
           <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -101,7 +112,7 @@ export default function ChartsPage() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <Link to={`/app/charts/${chart.id}${qs}`} style={{ ...btnSecondaryStyle, textDecoration: "none", display: "inline-block" }}>Edit</Link>
+                  <button onClick={() => fetcher.submit({ intent: "go-edit", id: chart.id }, { method: "post" })} style={btnSecondaryStyle}>Edit</button>
                   <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>

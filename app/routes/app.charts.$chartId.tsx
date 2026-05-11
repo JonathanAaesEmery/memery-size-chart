@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, Link, redirect } from "react-router";
+import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useFetcher, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -30,6 +30,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const form = await request.formData();
   const intent = form.get("intent") as string;
   const { chartId } = params;
+
+  if (intent === "go-back") {
+    const url = new URL(request.url);
+    return redirect(`/app/charts${url.search}`);
+  }
 
   if (intent === "save-details") {
     const title = (form.get("title") as string)?.trim();
@@ -147,6 +152,7 @@ export default function ChartEditor() {
   const { chart } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
+  const fetcher = useFetcher();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const isNew = !chart;
@@ -168,12 +174,12 @@ export default function ChartEditor() {
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px", fontFamily: "inherit" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
-        <Link
-          to={`/app/charts${qs}`}
-          style={{ color: "#6d7175", fontSize: 13, textDecoration: "none" }}
+        <button
+          onClick={() => fetcher.submit({ intent: "go-back" }, { method: "post" })}
+          style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}
         >
           ← Size Charts
-        </Link>
+        </button>
         <span style={{ color: "#c9cccf" }}>/</span>
         <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
           {isNew ? "New size chart" : chart.title}
