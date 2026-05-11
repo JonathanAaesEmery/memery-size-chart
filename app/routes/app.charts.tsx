@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSearchParams, useFetcher, useNavigate } from "react-router";
+import { useLoaderData, useSearchParams, useFetcher, Link } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -47,7 +47,6 @@ export default function ChartsPage() {
   const [searchParams] = useSearchParams();
   const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const fetcher = useFetcher();
-  const navigate = useNavigate();
 
   const handleToggle = (id: string) => {
     fetcher.submit({ intent: "toggle", id }, { method: "post" });
@@ -62,14 +61,14 @@ export default function ChartsPage() {
   return (
     <s-page heading="Size Charts">
       <div slot="primary-action">
-        <button onClick={() => navigate(`/app/charts/new${qs}`)} style={btnPrimaryStyle}>+ Create chart</button>
+        <Link to={`/app/charts/new${qs}`} style={{ ...btnPrimaryStyle, textDecoration: "none", display: "inline-block" }}>+ Create chart</Link>
       </div>
 
       <s-section>
         {charts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "24px 0" }}>
             <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-            <button onClick={() => navigate(`/app/charts/new${qs}`)} style={btnPrimaryStyle}>Create your first chart</button>
+            <Link to={`/app/charts/new${qs}`} style={{ ...btnPrimaryStyle, textDecoration: "none", display: "inline-block" }}>Create your first chart</Link>
           </div>
         ) : (
           <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -102,7 +101,7 @@ export default function ChartsPage() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button onClick={() => navigate(`/app/charts/${chart.id}${qs}`)} style={btnSecondaryStyle}>Edit</button>
+                  <Link to={`/app/charts/${chart.id}${qs}`} style={{ ...btnSecondaryStyle, textDecoration: "none", display: "inline-block" }}>Edit</Link>
                   <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>
