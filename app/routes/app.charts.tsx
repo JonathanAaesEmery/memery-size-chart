@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSearchParams, useFetcher } from "react-router";
+import { useLoaderData, useSearchParams, useFetcher, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -47,14 +47,7 @@ export default function ChartsPage() {
   const [searchParams] = useSearchParams();
   const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const fetcher = useFetcher();
-
-  const shopifyNavigate = (url: string) => {
-    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
-      (window as any).shopify.navigate(url);
-    } else {
-      window.location.href = url;
-    }
-  };
+  const navigate = useNavigate();
 
   const handleToggle = (id: string) => {
     fetcher.submit({ intent: "toggle", id }, { method: "post" });
@@ -69,14 +62,14 @@ export default function ChartsPage() {
   return (
     <s-page heading="Size Charts">
       <div slot="primary-action">
-        <button onClick={() => { console.log("Create chart clicked"); shopifyNavigate(`/app/charts/new${qs}`); }} style={btnPrimaryStyle}>+ Create chart</button>
+        <button onClick={() => navigate(`/app/charts/new${qs}`)} style={btnPrimaryStyle}>+ Create chart</button>
       </div>
 
       <s-section>
         {charts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "24px 0" }}>
             <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-            <button onClick={() => { console.log("Create first clicked"); shopifyNavigate(`/app/charts/new${qs}`); }} style={btnPrimaryStyle}>Create your first chart</button>
+            <button onClick={() => navigate(`/app/charts/new${qs}`)} style={btnPrimaryStyle}>Create your first chart</button>
           </div>
         ) : (
           <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -109,11 +102,11 @@ export default function ChartsPage() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button onClick={() => { console.log("Edit clicked", chart.id); shopifyNavigate(`/app/charts/${chart.id}${qs}`); }} style={btnSecondaryStyle}>Edit</button>
-                  <button onClick={() => { console.log("Toggle clicked", chart.id); handleToggle(chart.id); }} style={btnSecondaryStyle}>
+                  <button onClick={() => navigate(`/app/charts/${chart.id}${qs}`)} style={btnSecondaryStyle}>Edit</button>
+                  <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>
-                  <button onClick={() => { console.log("Delete clicked", chart.id); handleDelete(chart.id, chart.title); }} style={btnDangerStyle}>Delete</button>
+                  <button onClick={() => handleDelete(chart.id, chart.title)} style={btnDangerStyle}>Delete</button>
                 </div>
               </div>
             ))}

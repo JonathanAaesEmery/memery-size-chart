@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, redirect } from "react-router";
+import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useNavigate, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -147,6 +147,7 @@ export default function ChartEditor() {
   const { chart } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
+  const navigate = useNavigate();
   const nav = useNavigation();
   const busy = nav.state !== "idle";
   const isNew = !chart;
@@ -169,11 +170,7 @@ export default function ChartEditor() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
         <button
-          onClick={() => {
-            const shopify = (window as any).shopify;
-            if (shopify?.navigate) shopify.navigate(`/app/charts${qs}`);
-            else window.location.href = `/app/charts${qs}`;
-          }}
+          onClick={() => navigate(`/app/charts${qs}`)}
           style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}
         >
           ← Size Charts
