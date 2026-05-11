@@ -1,16 +1,17 @@
 import React from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, useRouteError, useSearchParams } from "react-router";
+import { Outlet, useRouteError, useSearchParams, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
-  return null;
+  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
 export default function App() {
+  const { apiKey } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
 
   const shop = searchParams.get("shop") || "";
@@ -19,7 +20,7 @@ export default function App() {
   const p = (path: string) => (qs ? `${path}?${qs}` : path);
 
   return (
-    <AppProvider embedded={false}>
+    <AppProvider embedded apiKey={apiKey}>
       <div style={{ minHeight: "100vh", background: "#f6f6f7", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
         <nav style={{
           background: "#fff",
