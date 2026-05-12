@@ -82,14 +82,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (intent === "update-column") {
     const columnId = form.get("columnId") as string;
+    const name = (form.get("name") as string)?.trim();
     const isMatchingKey = form.get("isMatchingKey") === "true";
     const customerInputEnabled = form.get("customerInputEnabled") === "true";
     const inputLabel = (form.get("inputLabel") as string)?.trim() || null;
     const apparelMeasurementType = (form.get("apparelMeasurementType") as string)?.trim() || null;
-    await prisma.sizeChartColumn.update({
-      where: { id: columnId },
-      data: { isMatchingKey, customerInputEnabled, inputLabel, apparelMeasurementType },
-    });
+    const updateData: any = { isMatchingKey, customerInputEnabled, inputLabel, apparelMeasurementType };
+    if (name) updateData.name = name;
+    await prisma.sizeChartColumn.update({ where: { id: columnId }, data: updateData });
     return { success: "Column updated" };
   }
 
