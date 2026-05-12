@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useFetcher, useNavigate, redirect } from "react-router";
+import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useFetcher, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -170,21 +170,14 @@ export default function ChartEditor() {
     (c) => c.columnType === "measurement" && (c.isMatchingKey || c.customerInputEnabled)
   );
 
-  const navigate = useNavigate();
-  const goBack = () => {
-    const backPath = `/app/charts?${searchParams.toString()}`;
-    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
-      (window as any).shopify.navigate(backPath);
-    }
-    navigate(backPath);
-  };
+  // Plain <a href> for back navigation — same mechanism as ui-nav-menu links
 
   return (
     <s-page heading={isNew ? "New size chart" : chart.title}>
       <div slot="breadcrumbs">
-        <button onClick={goBack} style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}>
+        <a href={`/app/charts?${searchParams.toString()}`} style={{ color: "#6d7175", fontSize: 13, textDecoration: "none" }}>
           Size Charts
-        </button>
+        </a>
       </div>
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 0 24px" }}>
 

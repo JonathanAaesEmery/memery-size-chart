@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSearchParams, useFetcher, useNavigate } from "react-router";
+import { useLoaderData, useSearchParams, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -44,20 +44,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const mutFetcher = useFetcher();
 
-  const goTo = (path: string) => {
-    const fullPath = `${path}?${searchParams.toString()}`;
-    // 1. Notify Shopify Admin via App Bridge (prevents iframe reset)
-    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
-      (window as any).shopify.navigate(fullPath);
-    }
-    // 2. Also navigate React Router directly (App Bridge's shopify:navigate event
-    //    fires on document, not the anchor, so AppProvider never calls navigate() itself)
-    navigate(fullPath);
-  };
+  // Build href with current search params (shop, host, embedded) so auth works after reload
+  const href = (path: string) => `${path}?${searchParams.toString()}`;
 
   const handleToggle = (id: string) => {
     mutFetcher.submit({ intent: "toggle", id }, { method: "post" });
@@ -72,14 +63,15 @@ export default function ChartsPage() {
   return (
     <s-page heading="Size Charts">
       <div slot="primary-action">
-        <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>+ Create chart</button>
+        {/* Plain <a> tag — App Bridge intercepts this click exactly like ui-nav-menu links */}
+        <a href={href("/app/charts/new")} style={linkPrimaryStyle}>+ Create chart</a>
       </div>
 
       <s-section>
         {charts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "24px 0" }}>
             <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-            <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>Create your first chart</button>
+            <a href={href("/app/charts/new")} style={linkPrimaryStyle}>Create your first chart</a>
           </div>
         ) : (
           <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -112,7 +104,8 @@ export default function ChartsPage() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button onClick={() => goTo(`/app/charts/${chart.id}`)} style={btnSecondaryStyle}>Edit</button>
+                  {/* Plain <a> for navigation — same mechanism as ui-nav-menu */}
+                  <a href={href(`/app/charts/${chart.id}`)} style={linkSecondaryStyle}>Edit</a>
                   <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>
@@ -127,7 +120,8 @@ export default function ChartsPage() {
   );
 }
 
-const btnPrimaryStyle: React.CSSProperties = { background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
+const linkPrimaryStyle: React.CSSProperties = { display: "inline-block", background: "#1a1a1a", color: "#fff", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer", textDecoration: "none" };
+const linkSecondaryStyle: React.CSSProperties = { display: "inline-block", background: "#fff", color: "#1a1a1a", border: "1px solid #c9cccf", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer", textDecoration: "none" };
 const btnSecondaryStyle: React.CSSProperties = { background: "#fff", color: "#1a1a1a", border: "1px solid #c9cccf", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer" };
 const btnDangerStyle: React.CSSProperties = { background: "#fff", color: "#d72c0d", border: "1px solid #ffa8a0", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer" };
 
