@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSearchParams, useFetcher, redirect } from "react-router";
+import { useLoaderData, useSearchParams, useFetcher, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -26,17 +26,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
 
-  if (intent === "go-new") {
-    const url = new URL(request.url);
-    return redirect(`/app/charts/new${url.search}`);
-  }
-
-  if (intent === "go-edit") {
-    const id = formData.get("id") as string;
-    const url = new URL(request.url);
-    return redirect(`/app/charts/${id}${url.search}`);
-  }
-
   if (intent === "delete") {
     const id = formData.get("id") as string;
     await prisma.sizeChart.deleteMany({ where: { id, shop: session.shop } });
@@ -55,11 +44,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
-  const navFetcher = useFetcher();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const mutFetcher = useFetcher();
 
-  const goNew = () => navFetcher.submit({ intent: "go-new" }, { method: "post" });
-  const goEdit = (id: string) => navFetcher.submit({ intent: "go-edit", id }, { method: "post" });
+  const goNew = () => navigate(`/app/charts/new?${searchParams.toString()}`);
+  const goEdit = (id: string) => navigate(`/app/charts/${id}?${searchParams.toString()}`);
 
   const handleToggle = (id: string) => {
     mutFetcher.submit({ intent: "toggle", id }, { method: "post" });
