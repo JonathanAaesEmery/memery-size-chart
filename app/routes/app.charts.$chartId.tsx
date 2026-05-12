@@ -19,6 +19,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     include: {
       columns: { orderBy: { displayOrder: "asc" } },
       rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
+      images: { orderBy: { displayOrder: "asc" } },
     },
   });
   const queryTime = Date.now() - queryStart;
@@ -26,7 +27,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!chart) throw new Response("Not found", { status: 404 });
 
   const totalTime = Date.now() - startTime;
-  console.log(`[LOADER] Chart ${chartId}: query=${queryTime}ms, total=${totalTime}ms (${chart.rows.length} rows, ${chart.rows.reduce((sum, r) => sum + r.cells.length, 0)} cells)`);
+  console.log(`[LOADER] Chart ${chartId}: query=${queryTime}ms, total=${totalTime}ms (${chart.rows.length} rows, ${chart.rows.reduce((sum, r) => sum + r.cells.length, 0)} cells, ${chart.images.length} images)`);
 
   return { chart };
 };
@@ -62,10 +63,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       include: {
         columns: { orderBy: { displayOrder: "asc" } },
         rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
+        images: { orderBy: { displayOrder: "asc" } },
       },
     });
     const elapsed = Date.now() - start;
-    console.log(`[QUERY] getChart() took ${elapsed}ms (${chart?.rows?.length || 0} rows, ${chart?.rows?.reduce((sum, r) => sum + (r.cells?.length || 0), 0) || 0} cells)`);
+    console.log(`[QUERY] getChart() took ${elapsed}ms (${chart?.rows?.length || 0} rows, ${chart?.rows?.reduce((sum, r) => sum + (r.cells?.length || 0), 0) || 0} cells, ${chart?.images?.length || 0} images)`);
     return chart;
   };
 
@@ -169,6 +171,48 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const elapsed = Date.now() - actionStart;
     console.log(`[ACTION] ${intent} completed in ${elapsed}ms`);
     return { success: "Table saved", chart };
+  }
+
+  if (intent === "add-image") {
+    const imageUrl = (form.get("imageUrl") as string)?.trim();
+    const altText = (form.get("altText") as string)?.trim() || "";
+
+    console.log(`[ACTION] add-image - imageUrl length: ${imageUrl?.length || 0}, altText: ${altText}`);
+
+    if (!imageUrl) {
+      console.log(`[ACTION] add-image failed: no imageUrl`);
+      return { error: "Image is required" };
+    }
+
+    try {
+      const maxOrder = await prisma.sizeChartImage.aggregate({
+        where: { chartId },
+        _max: { displayOrder: true },
+      });
+      const newOrder = (maxOrder._max.displayOrder ?? -1) + 1;
+
+      await prisma.sizeChartImage.create({
+        data: { chartId, url: imageUrl, altText, displayOrder: newOrder },
+      });
+      const chart = await getChart();
+      const elapsed = Date.now() - actionStart;
+      console.log(`[ACTION] ${intent} completed in ${elapsed}ms`);
+      return { success: "Image added", chart };
+    } catch (err) {
+      console.error(`[ACTION] add-image error:`, err);
+      return { error: `Failed to add image: ${err instanceof Error ? err.message : "Unknown error"}` };
+    }
+  }
+
+  if (intent === "delete-image") {
+    const imageId = form.get("imageId") as string;
+    if (!imageId) return { error: "Image ID is required" };
+
+    await prisma.sizeChartImage.delete({ where: { id: imageId } });
+    const chart = await getChart();
+    const elapsed = Date.now() - actionStart;
+    console.log(`[ACTION] ${intent} completed in ${elapsed}ms`);
+    return { success: "Image deleted", chart };
   }
 
   const elapsed = Date.now() - actionStart;

@@ -287,7 +287,7 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
         <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#6d7175", fontSize: 13, padding: 0 }}>Size Charts</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 3fr", gap: "12px", alignItems: "start", paddingBottom: 40, marginLeft: -20, marginRight: -20, paddingLeft: 20, paddingRight: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 3fr", gap: "12px", alignItems: "start", paddingBottom: 40, width: "100vw", marginLeft: "calc(-50vw + 50%)", paddingLeft: 16, paddingRight: 16 }}>
 
         {/* ── LEFT ── */}
         <div>
@@ -326,17 +326,7 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
                   <input name="description" defaultValue={chart?.description || ""} style={inp} placeholder="e.g. Size guide for knitwear" />
                 </div>
               </div>
-              <div style={{ marginTop: 8 }}>
-                <button type="button" onClick={() => setShowInstructions(s => !s)}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "#888", fontSize: 12, padding: 0 }}>
-                  {showInstructions ? "▲" : "▼"} Measurement instructions (HTML, shown below table)
-                </button>
-                {showInstructions
-                  ? <textarea name="instructionsHtml" defaultValue={chart?.instructionsHtml || ""} rows={4}
-                      style={{ ...inp, marginTop: 6, resize: "vertical", fontFamily: "monospace", fontSize: 12, display: "block" } as React.CSSProperties}
-                      placeholder="<p><strong>Bust:</strong> Measure around the fullest point…</p>" />
-                  : <input type="hidden" name="instructionsHtml" value={chart?.instructionsHtml || ""} />}
-              </div>
+              <input type="hidden" name="instructionsHtml" value={chart?.instructionsHtml || ""} />
             </form>
             {isNew && <p style={{ marginTop: 8, fontSize: 12, color: "#888" }}>Save the title first, then you can build your size table.</p>}
           </div>
@@ -344,6 +334,11 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
           {/* Spreadsheet */}
           {!isNew && (
             <SizeTable chart={chart} actionUrl={actionUrl} editorFetcher={editorFetcher} />
+          )}
+
+          {/* Images & Instructions */}
+          {!isNew && (
+            <ImagesSection chart={chart} actionUrl={actionUrl} editorFetcher={editorFetcher} />
           )}
         </div>
 
@@ -707,6 +702,273 @@ function ChartPreview({ chart }: { chart: any }) {
               </div>
             )}
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── RichTextEditor ───────────────────────────────────────────────────────────
+
+function RichTextEditor({ value, onChange }: { value: string; onChange: (text: string) => void }) {
+  const editorRef = React.useRef<HTMLDivElement>(null);
+  const [isFocused, setIsFocused] = React.useState(false);
+
+  React.useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value;
+    }
+  }, []);
+
+  const applyFormat = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    editorRef.current?.focus();
+  };
+
+  const handleInput = () => {
+    if (editorRef.current) {
+      onChange(editorRef.current.innerHTML);
+    }
+  };
+
+  const formatBtn = (cmd: string, label: string, shortTitle?: string): React.CSSProperties => ({
+    background: "#f0f0f0",
+    border: "1px solid #c9cccf",
+    borderRadius: 4,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: "pointer",
+    color: "#1a1a1a",
+    transition: "background 0.2s",
+    minWidth: 32,
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => applyFormat("bold")}
+          title="Bold (Ctrl+B)"
+          style={formatBtn("bold", "B")}
+        >
+          <strong>B</strong>
+        </button>
+        <button
+          type="button"
+          onClick={() => applyFormat("italic")}
+          title="Italic (Ctrl+I)"
+          style={formatBtn("italic", "I")}
+        >
+          <em>I</em>
+        </button>
+        <button
+          type="button"
+          onClick={() => applyFormat("underline")}
+          title="Underline (Ctrl+U)"
+          style={formatBtn("underline", "U")}
+        >
+          <u>U</u>
+        </button>
+        <div style={{ width: 1, background: "#e0e0e0", margin: "0 4px" }} />
+        <button
+          type="button"
+          onClick={() => applyFormat("insertUnorderedList")}
+          title="Bullet list"
+          style={formatBtn("insertUnorderedList", "•")}
+        >
+          •
+        </button>
+        <button
+          type="button"
+          onClick={() => applyFormat("insertOrderedList")}
+          title="Numbered list"
+          style={formatBtn("insertOrderedList", "1.")}
+        >
+          1.
+        </button>
+      </div>
+
+      <div
+        ref={editorRef}
+        contentEditable
+        onInput={handleInput}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        style={{
+          border: isFocused ? "2px solid #1a73e8" : "1px solid #c9cccf",
+          borderRadius: 6,
+          padding: "10px 12px",
+          minHeight: 120,
+          fontSize: 13,
+          lineHeight: 1.5,
+          color: "#1a1a1a",
+          background: "#fff",
+          outline: "none",
+          transition: "border-color 0.2s",
+        }}
+      />
+    </div>
+  );
+}
+
+// ─── ImagesSection ────────────────────────────────────────────────────────────
+
+function ImagesSection({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl: string; editorFetcher: any }) {
+  const [altText, setAltText] = React.useState("");
+  const [showAddImage, setShowAddImage] = React.useState(false);
+  const [showInstructions, setShowInstructions] = React.useState(false);
+  const [instructionsText, setInstructionsText] = React.useState(chart?.instructionsHtml || "");
+  const [savedInstructions, setSavedInstructions] = React.useState(chart?.instructionsHtml || "");
+  const [uploadError, setUploadError] = React.useState("");
+  const [isUploading, setIsUploading] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const images: any[] = chart?.images || [];
+
+  const sub = (data: FormData | Record<string, string>) => {
+    editorFetcher.submit(data, { method: "post", action: actionUrl });
+  };
+
+  // Hide form when image is successfully added
+  React.useEffect(() => {
+    if (isUploading && editorFetcher.state === "idle") {
+      setIsUploading(false);
+      if (editorFetcher.data?.success?.includes("Image added")) {
+        setShowAddImage(false);
+      }
+    }
+  }, [editorFetcher.state, isUploading]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadError("");
+    setIsUploading(true);
+    console.log(`[UI] Selected file: ${file.name}, size: ${file.size}`);
+
+    // Convert file to base64
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const base64 = reader.result as string;
+        console.log(`[UI] File converted to base64, length: ${base64.length}`);
+
+        const formData = new FormData();
+        formData.set("intent", "add-image");
+        formData.set("imageUrl", base64);
+        formData.set("altText", altText.trim());
+
+        console.log(`[UI] Submitting image upload...`);
+        sub(formData);
+
+        // Clear form after submission (but don't hide until success is detected)
+        setAltText("");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      } catch (err) {
+        setUploadError("Failed to upload image");
+        setIsUploading(false);
+        console.error("Image upload error:", err);
+      }
+    };
+    reader.onerror = () => {
+      setUploadError("Failed to read file");
+      setIsUploading(false);
+      console.error("FileReader error:", reader.error);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const deleteImage = (imageId: string) => {
+    if (confirm("Remove this image?")) {
+      sub({ intent: "delete-image", imageId });
+    }
+  };
+
+  const saveInstructions = () => {
+    sub({ intent: "save-details", title: chart.title, description: chart.description || "", chartType: chart.chartType, defaultUnit: chart.defaultUnit, instructionsHtml: instructionsText });
+    setSavedInstructions(instructionsText);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
+      {/* Images */}
+      <div style={{ border: "1px solid #e1e3e5", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+        {editorFetcher.data && "error" in editorFetcher.data && <div style={bannerStyle("error")}>{editorFetcher.data.error}</div>}
+        {editorFetcher.data && "success" in editorFetcher.data && editorFetcher.data.success?.includes?.("Image") && <div style={bannerStyle("success")}>{editorFetcher.data.success}</div>}
+        <button
+          type="button"
+          onClick={() => setShowAddImage(!showAddImage)}
+          style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "12px 14px", fontSize: 13, fontWeight: 500, color: "#1a1a1a", borderBottom: showAddImage || images.length > 0 ? "1px solid #e1e3e5" : "none", display: "flex", alignItems: "center", gap: 6 }}
+        >
+          {showAddImage ? "▼" : "▶"} Images
+        </button>
+
+        {images.length > 0 && (
+          <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {images.map((img: any) => (
+              <div key={img.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px", background: "#fafafa", borderRadius: 6 }}>
+                <img src={img.url} alt={img.altText} style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 4 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {img.altText && <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: "#1a1a1a" }}>{img.altText}</p>}
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#888", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{img.url}</p>
+                </div>
+                <button type="button" onClick={() => deleteImage(img.id)} style={{ ...btnDanger, flexShrink: 0, padding: "6px 10px", fontSize: 12 }}>Delete</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showAddImage && (
+          <div style={{ padding: "12px 14px", borderTop: "1px solid #e1e3e5", display: "flex", flexDirection: "column", gap: 10 }}>
+            {uploadError && <div style={bannerStyle("error")}>{uploadError}</div>}
+            {isUploading && <div style={bannerStyle("success")}>Uploading image...</div>}
+            <div>
+              <label style={lbl}>Image file *</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                disabled={isUploading}
+                style={{ ...inp, padding: "8px" }}
+              />
+            </div>
+            <div>
+              <label style={lbl}>Alt text (optional)</label>
+              <input
+                type="text"
+                value={altText}
+                onChange={(e) => setAltText(e.target.value)}
+                placeholder="Description of the image"
+                disabled={isUploading}
+                style={inp}
+              />
+            </div>
+            <button type="button" onClick={() => { setShowAddImage(false); setUploadError(""); }} disabled={isUploading} style={btnSecondary}>Cancel</button>
+          </div>
+        )}
+      </div>
+
+      {/* Instructions */}
+      <div style={{ border: "1px solid #e1e3e5", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+        <button
+          type="button"
+          onClick={() => setShowInstructions(!showInstructions)}
+          style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "12px 14px", fontSize: 13, fontWeight: 500, color: "#1a1a1a", borderBottom: showInstructions ? "1px solid #e1e3e5" : "none", display: "flex", alignItems: "center", gap: 6 }}
+        >
+          {showInstructions ? "▼" : "▶"} Measurement instructions
+        </button>
+
+        {showInstructions && (
+          <div style={{ padding: "12px 14px", borderTop: "1px solid #e1e3e5", display: "flex", flexDirection: "column", gap: 8 }}>
+            <RichTextEditor value={instructionsText} onChange={setInstructionsText} />
+            {instructionsText !== savedInstructions && (
+              <button type="button" onClick={saveInstructions} style={btnPrimary}>Save instructions</button>
+            )}
+          </div>
         )}
       </div>
     </div>
