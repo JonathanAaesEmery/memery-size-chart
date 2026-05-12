@@ -166,7 +166,7 @@ export default function ChartEditor() {
     submit({ intent, ...extra }, { method: "post" });
   }
 
-  const hasMeasurementCols = chart?.columns.some(
+  const hasMeasurementCols = chart?.columns?.some(
     (c) => c.columnType === "measurement" && (c.isMatchingKey || c.customerInputEnabled)
   );
 
