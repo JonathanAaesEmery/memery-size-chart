@@ -48,6 +48,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const chart = await prisma.sizeChart.create({
         data: { shop: session.shop, title, description, chartType, defaultUnit, instructionsHtml },
       });
+      // When called from the inline editor, return JSON so no redirect/navigation happens
+      if (form.get("returnJson") === "true") {
+        return { newChartId: chart.id };
+      }
       const url = new URL(request.url);
       const qs = url.search;
       return redirect(`/app/charts/${chart.id}${qs}`);
