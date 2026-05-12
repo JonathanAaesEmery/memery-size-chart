@@ -175,7 +175,7 @@ export default function ChartEditor() {
   return (
     <s-page heading={isNew ? "New size chart" : chart.title}>
       <div slot="breadcrumbs">
-        <a href={`/app/charts?${searchParams.toString()}`} style={{ color: "#6d7175", fontSize: 13, textDecoration: "none" }}>
+        <a href={`/app/charts?shop=${searchParams.get("shop") || ""}&host=${searchParams.get("host") || ""}`} style={{ color: "#6d7175", fontSize: 13, textDecoration: "none" }}>
           Size Charts
         </a>
       </div>

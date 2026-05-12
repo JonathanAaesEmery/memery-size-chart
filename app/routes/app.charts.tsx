@@ -47,8 +47,11 @@ export default function ChartsPage() {
   const [searchParams] = useSearchParams();
   const mutFetcher = useFetcher();
 
-  // Build href with current search params (shop, host, embedded) so auth works after reload
-  const href = (path: string) => `${path}?${searchParams.toString()}`;
+  // Match exactly how app.tsx builds ui-nav-menu links: only shop + host
+  const shop = searchParams.get("shop") || "";
+  const host = searchParams.get("host") || "";
+  const qs = [shop && `shop=${shop}`, host && `host=${host}`].filter(Boolean).join("&");
+  const href = (path: string) => qs ? `${path}?${qs}` : path;
 
   const handleToggle = (id: string) => {
     mutFetcher.submit({ intent: "toggle", id }, { method: "post" });
