@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useFetcher, redirect } from "react-router";
+import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useFetcher, useNavigate, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -170,18 +170,14 @@ export default function ChartEditor() {
     (c) => c.columnType === "measurement" && (c.isMatchingKey || c.customerInputEnabled)
   );
 
-  const goBack = async () => {
-    const shop = searchParams.get("shop") || "";
-    const host = searchParams.get("host") || "";
-    let idToken = "";
-    try {
-      if (typeof window !== "undefined" && (window as any).shopify?.idToken) {
-        idToken = await (window as any).shopify.idToken();
-      }
-    } catch (_) {}
-    const params = new URLSearchParams({ shop, host, embedded: "1" });
-    if (idToken) params.set("id_token", idToken);
-    window.location.href = `/app/charts?${params.toString()}`;
+  const navigate = useNavigate();
+  const shop = searchParams.get("shop") || "";
+  const host = searchParams.get("host") || "";
+  const qs = [shop && `shop=${shop}`, host && `host=${host}`].filter(Boolean).join("&");
+  const goBack = () => {
+    const path = qs ? `/app/charts?${qs}` : "/app/charts";
+    (window as any).shopify?.navigate?.(path);
+    navigate(path);
   };
 
   return (

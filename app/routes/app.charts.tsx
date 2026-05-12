@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSearchParams, useFetcher } from "react-router";
+import { useLoaderData, useSearchParams, useFetcher, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -45,24 +45,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const mutFetcher = useFetcher();
 
-  const goTo = async (path: string) => {
-    const shop = searchParams.get("shop") || "";
-    const host = searchParams.get("host") || "";
+  const shop = searchParams.get("shop") || "";
+  const host = searchParams.get("host") || "";
+  const qs = [shop && `shop=${shop}`, host && `host=${host}`].filter(Boolean).join("&");
+  const p = (path: string) => qs ? `${path}?${qs}` : path;
 
-    // Get a fresh session token from App Bridge — this is what Shopify needs for auth
-    let idToken = "";
-    try {
-      if (typeof window !== "undefined" && (window as any).shopify?.idToken) {
-        idToken = await (window as any).shopify.idToken();
-      }
-    } catch (_) {}
-
-    const params = new URLSearchParams({ shop, host, embedded: "1" });
-    if (idToken) params.set("id_token", idToken);
-
-    window.location.href = `${path}?${params.toString()}`;
+  const goTo = (path: string) => {
+    const fullPath = p(path);
+    // Notify Admin via App Bridge (prevents iframe reset, updates Admin URL bar)
+    (window as any).shopify?.navigate?.(fullPath);
+    // Navigate React Router directly — App Bridge's shopify:navigate DOM event
+    // fires with document as target so AppProvider never calls navigate() itself
+    navigate(fullPath);
   };
 
   const handleToggle = (id: string) => {
