@@ -173,9 +173,9 @@ export default function ChartEditor() {
   const navigate = useNavigate();
   const shop = searchParams.get("shop") || "";
   const host = searchParams.get("host") || "";
-  const qs = [shop && `shop=${shop}`, host && `host=${host}`].filter(Boolean).join("&");
+  const navQs = [shop && `shop=${shop}`, host && `host=${host}`].filter(Boolean).join("&");
   const goBack = () => {
-    const path = qs ? `/app/charts?${qs}` : "/app/charts";
+    const path = navQs ? `/app/charts?${navQs}` : "/app/charts";
     (window as any).shopify?.navigate?.(path);
     navigate(path);
   };
