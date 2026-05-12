@@ -48,8 +48,16 @@ export default function ChartsPage() {
   const [searchParams] = useSearchParams();
   const mutFetcher = useFetcher();
 
-  const goNew = () => navigate(`/app/charts/new?${searchParams.toString()}`);
-  const goEdit = (id: string) => navigate(`/app/charts/${id}?${searchParams.toString()}`);
+  const goTo = (path: string) => {
+    const fullPath = `${path}?${searchParams.toString()}`;
+    // 1. Notify Shopify Admin via App Bridge (prevents iframe reset)
+    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
+      (window as any).shopify.navigate(fullPath);
+    }
+    // 2. Also navigate React Router directly (App Bridge's shopify:navigate event
+    //    fires on document, not the anchor, so AppProvider never calls navigate() itself)
+    navigate(fullPath);
+  };
 
   const handleToggle = (id: string) => {
     mutFetcher.submit({ intent: "toggle", id }, { method: "post" });
@@ -64,14 +72,14 @@ export default function ChartsPage() {
   return (
     <s-page heading="Size Charts">
       <div slot="primary-action">
-        <button onClick={goNew} style={btnPrimaryStyle}>+ Create chart</button>
+        <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>+ Create chart</button>
       </div>
 
       <s-section>
         {charts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "24px 0" }}>
             <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-            <button onClick={goNew} style={btnPrimaryStyle}>Create your first chart</button>
+            <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>Create your first chart</button>
           </div>
         ) : (
           <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -104,7 +112,7 @@ export default function ChartsPage() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button onClick={() => goEdit(chart.id)} style={btnSecondaryStyle}>Edit</button>
+                  <button onClick={() => goTo(`/app/charts/${chart.id}`)} style={btnSecondaryStyle}>Edit</button>
                   <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>

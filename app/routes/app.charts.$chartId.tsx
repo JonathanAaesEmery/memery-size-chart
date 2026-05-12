@@ -1,6 +1,6 @@
 import React from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useFetcher, redirect } from "react-router";
+import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams, useFetcher, useNavigate, redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -170,8 +170,13 @@ export default function ChartEditor() {
     (c) => c.columnType === "measurement" && (c.isMatchingKey || c.customerInputEnabled)
   );
 
+  const navigate = useNavigate();
   const goBack = () => {
-    fetcher.submit({ intent: "go-back" }, { method: "post" });
+    const backPath = `/app/charts?${searchParams.toString()}`;
+    if (typeof window !== "undefined" && (window as any).shopify?.navigate) {
+      (window as any).shopify.navigate(backPath);
+    }
+    navigate(backPath);
   };
 
   return (
