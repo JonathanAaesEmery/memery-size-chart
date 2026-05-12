@@ -8,10 +8,12 @@ import prisma from "../db.server";
 // ─── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const startTime = Date.now();
   const { session } = await authenticate.admin(request);
   const { chartId } = params;
   if (chartId === "new") return { chart: null };
 
+  const queryStart = Date.now();
   const chart = await prisma.sizeChart.findFirst({
     where: { id: chartId, shop: session.shop },
     include: {
@@ -19,22 +21,53 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
     },
   });
+  const queryTime = Date.now() - queryStart;
+
   if (!chart) throw new Response("Not found", { status: 404 });
+
+  const totalTime = Date.now() - startTime;
+  console.log(`[LOADER] Chart ${chartId}: query=${queryTime}ms, total=${totalTime}ms (${chart.rows.length} rows, ${chart.rows.reduce((sum, r) => sum + r.cells.length, 0)} cells)`);
+
   return { chart };
 };
 
 // ─── Action ────────────────────────────────────────────────────────────────────
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const startTime = Date.now();
+  const authStart = Date.now();
   const { session } = await authenticate.admin(request);
+  const authTime = Date.now() - authStart;
+
+  const formStart = Date.now();
   const form = await request.formData();
+  const formTime = Date.now() - formStart;
+
   const intent = form.get("intent") as string;
   const { chartId } = params;
+
+  console.log(`[ACTION] ${intent} for chart ${chartId} - auth=${authTime}ms, form=${formTime}ms`);
+  const actionStart = Date.now();
 
   if (intent === "go-back") {
     const url = new URL(request.url);
     return redirect(`/app/charts${url.search}`);
   }
+
+  // Helper to fetch updated chart (after mutations, return it so frontend doesn't need to reload)
+  const getChart = async () => {
+    const start = Date.now();
+    const chart = await prisma.sizeChart.findFirst({
+      where: { id: chartId, shop: session.shop },
+      include: {
+        columns: { orderBy: { displayOrder: "asc" } },
+        rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
+      },
+    });
+    const elapsed = Date.now() - start;
+    console.log(`[QUERY] getChart() took ${elapsed}ms (${chart?.rows?.length || 0} rows, ${chart?.rows?.reduce((sum, r) => sum + (r.cells?.length || 0), 0) || 0} cells)`);
+    return chart;
+  };
 
   if (intent === "save-details") {
     const title = (form.get("title") as string)?.trim();
@@ -48,7 +81,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const chart = await prisma.sizeChart.create({
         data: { shop: session.shop, title, description, chartType, defaultUnit, instructionsHtml },
       });
-      // When called from the inline editor, return JSON so no redirect/navigation happens
       if (form.get("returnJson") === "true") {
         return { newChartId: chart.id };
       }
@@ -60,7 +92,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       where: { id: chartId, shop: session.shop },
       data: { title, description, chartType, defaultUnit, instructionsHtml },
     });
-    return { success: "Saved" };
+    const chart = await getChart();
+    return { success: "Saved", chart };
   }
 
   if (intent === "add-column") {
@@ -77,7 +110,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         data: { chartId: chartId!, name, columnType, displayOrder: count, isMatchingKey, customerInputEnabled, apparelMeasurementType, inputLabel },
       });
     }
-    return { success: "Column added" };
+    const chart = await getChart();
+    return { success: "Column added", chart };
   }
 
   if (intent === "update-column") {
@@ -90,12 +124,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const updateData: any = { isMatchingKey, customerInputEnabled, inputLabel, apparelMeasurementType };
     if (name) updateData.name = name;
     await prisma.sizeChartColumn.update({ where: { id: columnId }, data: updateData });
-    return { success: "Column updated" };
+    const chart = await getChart();
+    return { success: "Column updated", chart };
   }
 
   if (intent === "delete-column") {
     await prisma.sizeChartColumn.delete({ where: { id: form.get("columnId") as string } });
-    return { success: "Column deleted" };
+    const chart = await getChart();
+    return { success: "Column deleted", chart };
   }
 
   if (intent === "add-row") {
@@ -103,12 +139,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const count = await prisma.sizeChartRow.count({ where: { chartId } });
       await prisma.sizeChartRow.create({ data: { chartId: chartId!, displayOrder: count } });
     }
-    return { success: "Row added" };
+    const chart = await getChart();
+    return { success: "Row added", chart };
   }
 
   if (intent === "delete-row") {
     await prisma.sizeChartRow.delete({ where: { id: form.get("rowId") as string } });
-    return { success: "Row deleted" };
+    const chart = await getChart();
+    return { success: "Row deleted", chart };
   }
 
   if (intent === "save-cells") {
@@ -127,9 +165,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         });
       }
     }
-    return { success: "Table saved" };
+    const chart = await getChart();
+    const elapsed = Date.now() - actionStart;
+    console.log(`[ACTION] ${intent} completed in ${elapsed}ms`);
+    return { success: "Table saved", chart };
   }
 
+  const elapsed = Date.now() - actionStart;
+  console.log(`[ACTION] ${intent} completed in ${elapsed}ms`);
   return null;
 };
 

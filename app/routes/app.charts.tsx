@@ -14,12 +14,19 @@ const CHART_TYPES = [
 // ─── Loader ──────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const startTime = Date.now();
   const { session } = await authenticate.admin(request);
+
+  const queryStart = Date.now();
   const charts = await prisma.sizeChart.findMany({
     where: { shop: session.shop },
     orderBy: { createdAt: "desc" },
     select: { id: true, title: true, isActive: true, createdAt: true, _count: { select: { productMappings: true } } },
   });
+  const queryTime = Date.now() - queryStart;
+  const totalTime = Date.now() - startTime;
+
+  console.log(`[LOADER] Charts list: query=${queryTime}ms, total=${totalTime}ms (${charts.length} charts)`);
   return { charts };
 };
 
@@ -29,15 +36,138 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
+
   if (intent === "delete") {
     const id = formData.get("id") as string;
     await prisma.sizeChart.deleteMany({ where: { id, shop: session.shop } });
   }
+
   if (intent === "toggle") {
     const id = formData.get("id") as string;
     const current = await prisma.sizeChart.findFirst({ where: { id, shop: session.shop } });
     if (current) await prisma.sizeChart.update({ where: { id }, data: { isActive: !current.isActive } });
   }
+
+  if (intent === "duplicate-chart") {
+    const id = formData.get("id") as string;
+    const original = await prisma.sizeChart.findFirst({
+      where: { id, shop: session.shop },
+      include: {
+        columns: { orderBy: { displayOrder: "asc" } },
+        rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
+        images: { orderBy: { displayOrder: "asc" } },
+      },
+    });
+
+    if (!original) return { error: "Chart not found" };
+
+    // Create new chart using transaction for atomicity
+    const newChart = await prisma.$transaction(async (tx) => {
+      // 1. Create new chart
+      const duplicated = await tx.sizeChart.create({
+        data: {
+          shop: session.shop,
+          title: `${original.title} - Copy`,
+          description: original.description,
+          chartType: original.chartType,
+          defaultUnit: original.defaultUnit,
+          instructionsHtml: original.instructionsHtml,
+          imageLayout: original.imageLayout,
+          isActive: original.isActive,
+        },
+      });
+
+      // 2. Create all columns at once with createMany
+      const newColumns = original.columns.length > 0
+        ? await tx.sizeChartColumn.createMany({
+            data: original.columns.map(col => ({
+              chartId: duplicated.id,
+              name: col.name,
+              columnType: col.columnType,
+              displayOrder: col.displayOrder,
+              isMatchingKey: col.isMatchingKey,
+              customerInputEnabled: col.customerInputEnabled,
+              apparelMeasurementType: col.apparelMeasurementType,
+              inputLabel: col.inputLabel,
+            })),
+          })
+        : { count: 0 };
+
+      // Fetch the created columns to map old IDs to new IDs
+      const createdColumns = await tx.sizeChartColumn.findMany({
+        where: { chartId: duplicated.id },
+        select: { id: true, name: true },
+      });
+      const columnMap = new Map<string, string>();
+      original.columns.forEach((origCol, idx) => {
+        if (createdColumns[idx]) {
+          columnMap.set(origCol.id, createdColumns[idx].id);
+        }
+      });
+
+      // 3. Create all rows at once
+      const newRows = original.rows.length > 0
+        ? await tx.sizeChartRow.createMany({
+            data: original.rows.map(row => ({
+              chartId: duplicated.id,
+              displayOrder: row.displayOrder,
+            })),
+          })
+        : { count: 0 };
+
+      // Fetch the created rows to map old IDs to new IDs
+      const createdRows = await tx.sizeChartRow.findMany({
+        where: { chartId: duplicated.id },
+        select: { id: true, _count: { select: { cells: true } } },
+        orderBy: { displayOrder: "asc" },
+      });
+      const rowMap = new Map<string, string>();
+      original.rows.forEach((origRow, idx) => {
+        if (createdRows[idx]) {
+          rowMap.set(origRow.id, createdRows[idx].id);
+        }
+      });
+
+      // 4. Create all cells at once
+      const allCells: any[] = [];
+      original.rows.forEach(row => {
+        row.cells.forEach(cell => {
+          const newRowId = rowMap.get(row.id);
+          const newColId = columnMap.get(cell.columnId);
+          if (newRowId && newColId) {
+            allCells.push({
+              rowId: newRowId,
+              columnId: newColId,
+              value: cell.value,
+              minValue: cell.minValue,
+              maxValue: cell.maxValue,
+            });
+          }
+        });
+      });
+      if (allCells.length > 0) {
+        await tx.sizeChartCell.createMany({ data: allCells });
+      }
+
+      // 5. Copy images if they exist
+      if (original.images.length > 0) {
+        await tx.sizeChartImage.createMany({
+          data: original.images.map(img => ({
+            chartId: duplicated.id,
+            url: img.url,
+            altText: img.altText,
+            displayOrder: img.displayOrder,
+          })),
+        });
+      }
+
+      return duplicated;
+    });
+
+    // Return new chart ID to trigger navigation
+    return { newChartId: newChart.id };
+  }
+
   return null;
 };
 
@@ -47,6 +177,13 @@ export default function ChartsPage() {
   const { charts } = useLoaderData<typeof loader>();
   const mutFetcher = useFetcher();
   const [editingId, setEditingId] = React.useState<null | "new" | string>(null);
+
+  // Navigate to duplicated chart when duplication completes
+  React.useEffect(() => {
+    if (mutFetcher.data?.newChartId) {
+      setEditingId(mutFetcher.data.newChartId as string);
+    }
+  }, [mutFetcher.data?.newChartId]); // eslint-disable-line
 
   if (editingId !== null) {
     return <InlineChartEditor editingId={editingId} onEditingIdChange={setEditingId} onBack={() => setEditingId(null)} />;
@@ -78,6 +215,7 @@ export default function ChartsPage() {
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => setEditingId(chart.id)} style={btnSecondary}>Edit</button>
+                  <button onClick={() => mutFetcher.submit({ intent: "duplicate-chart", id: chart.id }, { method: "post" })} style={btnSecondary}>Duplicate</button>
                   <button onClick={() => mutFetcher.submit({ intent: "toggle", id: chart.id }, { method: "post" })} style={btnSecondary}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>
@@ -97,15 +235,22 @@ export default function ChartsPage() {
 function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId: "new" | string; onEditingIdChange: (id: string) => void; onBack: () => void }) {
   const dataFetcher = useFetcher<{ chart: any }>();
   const editorFetcher = useFetcher<any>();
+  const [chart, setChart] = React.useState<any>(null);
 
   const actionUrl = editingId === "new" ? "/app/charts/new" : `/app/charts/${editingId}`;
-  const chart = dataFetcher.data?.chart ?? null;
   const isNew = !chart;
   const busy = editorFetcher.state !== "idle";
   const detailsRef = React.useRef<HTMLFormElement>(null);
   const [showInstructions, setShowInstructions] = React.useState(false);
 
   React.useEffect(() => { dataFetcher.load(actionUrl); }, []); // eslint-disable-line
+
+  // Sync chart state when dataFetcher loads initial data
+  React.useEffect(() => {
+    if (dataFetcher.data?.chart) {
+      setChart(dataFetcher.data.chart);
+    }
+  }, [dataFetcher.data?.chart?.id]); // Update when chart ID changes (new chart loaded)
 
   const prevState = React.useRef("idle");
   React.useEffect(() => {
@@ -116,6 +261,9 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
         const newId = editorFetcher.data.newChartId as string;
         onEditingIdChange(newId);
         dataFetcher.load(`/app/charts/${newId}`);
+      } else if (editorFetcher.data.chart) {
+        // Use chart data from action response instead of reloading
+        setChart(editorFetcher.data.chart);
       } else {
         dataFetcher.load(actionUrl);
       }
@@ -139,7 +287,7 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
         <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#6d7175", fontSize: 13, padding: 0 }}>Size Charts</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "20px", alignItems: "start", paddingBottom: 40 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 3fr", gap: "12px", alignItems: "start", paddingBottom: 40, marginLeft: -20, marginRight: -20, paddingLeft: 20, paddingRight: 20 }}>
 
         {/* ── LEFT ── */}
         <div>
@@ -318,12 +466,10 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
                       style={{ border: "none", background: "none", cursor: "pointer", color: "#c0c0c0", padding: "5px 9px", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
                   </div>
                   {/* Matching toggle */}
-                  <div style={{ padding: "5px 8px 6px" }}>
-                    <button type="button" onClick={() => toggleMatching(col)}
-                      style={{ fontSize: 10, fontWeight: 600, padding: "2px 9px", borderRadius: 10, border: `1.5px solid ${col.customerInputEnabled ? "#7c3aed" : "#c8c8c8"}`, cursor: "pointer", background: col.customerInputEnabled ? "#7c3aed" : "transparent", color: col.customerInputEnabled ? "#fff" : "#999", letterSpacing: "0.01em" }}>
-                      {col.customerInputEnabled ? "📏 Matching" : "Label"}
-                    </button>
-                  </div>
+                  <button type="button" onClick={() => toggleMatching(col)} title={col.customerInputEnabled ? "Click to make label column" : "Click to enable size recommendation"}
+                    style={{ width: "auto", margin: "0 auto", display: "block", border: `1.5px solid ${col.customerInputEnabled ? "#7c3aed" : "#ddd"}`, background: col.customerInputEnabled ? "#f0ebff" : "#fafafa", cursor: "pointer", padding: "5px 12px", fontSize: 11, fontWeight: 600, color: col.customerInputEnabled ? "#7c3aed" : "#666", borderRadius: 6, transition: "all 0.15s", letterSpacing: "0.02em" }}>
+                    {col.customerInputEnabled ? "📏 Matching" : "Label"}
+                  </button>
                 </th>
               ))}
 
@@ -378,11 +524,11 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
                 onMouseLeave={() => setHoveredRow(null)}>
 
                 {/* Row number / delete */}
-                <td style={{ background: HEADER_BG, border: INNER_BORDER, borderLeft: "none", width: ROW_NUM_W, textAlign: "center", padding: 0, userSelect: "none", verticalAlign: "middle" } as React.CSSProperties}>
+                <td style={{ background: HEADER_BG, border: INNER_BORDER, borderLeft: "none", width: ROW_NUM_W, textAlign: "center", padding: 0, userSelect: "none", verticalAlign: "middle", height: 42, display: "flex", alignItems: "center", justifyContent: "center" } as React.CSSProperties}>
                   {hoveredRow === row.id
                     ? <button type="button" onClick={() => deleteRow(row.id)} title="Remove row"
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#d72c0d", fontSize: 16, padding: "6px 10px", fontWeight: 700, display: "block", width: "100%" }}>×</button>
-                    : <span style={{ display: "block", padding: "6px 0", fontSize: 11, color: "#999", fontWeight: 600 }}>{ri + 1}</span>}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#d72c0d", fontSize: 18, padding: 0, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", lineHeight: 1 }}>×</button>
+                    : <span style={{ fontSize: 11, color: "#999", fontWeight: 600, lineHeight: 1 }}>{ri + 1}</span>}
                 </td>
 
                 {/* Cells */}
