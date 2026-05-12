@@ -47,11 +47,23 @@ export default function ChartsPage() {
   const [searchParams] = useSearchParams();
   const mutFetcher = useFetcher();
 
-  // Match exactly how app.tsx builds ui-nav-menu links: only shop + host
-  const shop = searchParams.get("shop") || "";
-  const host = searchParams.get("host") || "";
-  const qs = [shop && `shop=${shop}`, host && `host=${host}`].filter(Boolean).join("&");
-  const href = (path: string) => qs ? `${path}?${qs}` : path;
+  const goTo = async (path: string) => {
+    const shop = searchParams.get("shop") || "";
+    const host = searchParams.get("host") || "";
+
+    // Get a fresh session token from App Bridge — this is what Shopify needs for auth
+    let idToken = "";
+    try {
+      if (typeof window !== "undefined" && (window as any).shopify?.idToken) {
+        idToken = await (window as any).shopify.idToken();
+      }
+    } catch (_) {}
+
+    const params = new URLSearchParams({ shop, host, embedded: "1" });
+    if (idToken) params.set("id_token", idToken);
+
+    window.location.href = `${path}?${params.toString()}`;
+  };
 
   const handleToggle = (id: string) => {
     mutFetcher.submit({ intent: "toggle", id }, { method: "post" });
@@ -66,15 +78,14 @@ export default function ChartsPage() {
   return (
     <s-page heading="Size Charts">
       <div slot="primary-action">
-        {/* Plain <a> tag — App Bridge intercepts this click exactly like ui-nav-menu links */}
-        <a href={href("/app/charts/new")} style={linkPrimaryStyle}>+ Create chart</a>
+        <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>+ Create chart</button>
       </div>
 
       <s-section>
         {charts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "24px 0" }}>
             <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-            <a href={href("/app/charts/new")} style={linkPrimaryStyle}>Create your first chart</a>
+            <button onClick={() => goTo("/app/charts/new")} style={btnPrimaryStyle}>Create your first chart</button>
           </div>
         ) : (
           <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
@@ -107,8 +118,7 @@ export default function ChartsPage() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  {/* Plain <a> for navigation — same mechanism as ui-nav-menu */}
-                  <a href={href(`/app/charts/${chart.id}`)} style={linkSecondaryStyle}>Edit</a>
+                  <button onClick={() => goTo(`/app/charts/${chart.id}`)} style={btnSecondaryStyle}>Edit</button>
                   <button onClick={() => handleToggle(chart.id)} style={btnSecondaryStyle}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>
@@ -123,8 +133,7 @@ export default function ChartsPage() {
   );
 }
 
-const linkPrimaryStyle: React.CSSProperties = { display: "inline-block", background: "#1a1a1a", color: "#fff", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer", textDecoration: "none" };
-const linkSecondaryStyle: React.CSSProperties = { display: "inline-block", background: "#fff", color: "#1a1a1a", border: "1px solid #c9cccf", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer", textDecoration: "none" };
+const btnPrimaryStyle: React.CSSProperties = { background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
 const btnSecondaryStyle: React.CSSProperties = { background: "#fff", color: "#1a1a1a", border: "1px solid #c9cccf", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer" };
 const btnDangerStyle: React.CSSProperties = { background: "#fff", color: "#d72c0d", border: "1px solid #ffa8a0", borderRadius: 6, padding: "7px 14px", fontSize: 13, cursor: "pointer" };
 

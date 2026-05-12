@@ -170,14 +170,26 @@ export default function ChartEditor() {
     (c) => c.columnType === "measurement" && (c.isMatchingKey || c.customerInputEnabled)
   );
 
-  // Plain <a href> for back navigation — same mechanism as ui-nav-menu links
+  const goBack = async () => {
+    const shop = searchParams.get("shop") || "";
+    const host = searchParams.get("host") || "";
+    let idToken = "";
+    try {
+      if (typeof window !== "undefined" && (window as any).shopify?.idToken) {
+        idToken = await (window as any).shopify.idToken();
+      }
+    } catch (_) {}
+    const params = new URLSearchParams({ shop, host, embedded: "1" });
+    if (idToken) params.set("id_token", idToken);
+    window.location.href = `/app/charts?${params.toString()}`;
+  };
 
   return (
     <s-page heading={isNew ? "New size chart" : chart.title}>
       <div slot="breadcrumbs">
-        <a href={`/app/charts?shop=${searchParams.get("shop") || ""}&host=${searchParams.get("host") || ""}`} style={{ color: "#6d7175", fontSize: 13, textDecoration: "none" }}>
+        <button onClick={goBack} style={{ color: "#6d7175", background: "none", border: "none", cursor: "pointer", fontSize: 13, padding: 0 }}>
           Size Charts
-        </a>
+        </button>
       </div>
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 0 24px" }}>
 
