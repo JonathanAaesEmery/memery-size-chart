@@ -1,49 +1,47 @@
-import React, { useRef, useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
-interface ShopifyCollection {
-  id: string;
-  title: string;
-  handle: string;
-}
-
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
 
-  // Fetch collections from Shopify Admin API
-  const collectionsResponse = await admin.graphql(
-    `#graphql
-    query GetCollections {
-      collections(first: 250) {
-        edges {
-          node {
-            id
-            title
-            handle
+  // Fetch products (for vendor, type, tags) and collections in parallel
+  const [productsRes, collectionsRes] = await Promise.all([
+    admin.graphql(`#graphql
+      query GetProducts {
+        products(first: 250) {
+          edges {
+            node { vendor productType tags }
           }
         }
-      }
-    }
-    `
-  );
+      }`),
+    admin.graphql(`#graphql
+      query GetCollections {
+        collections(first: 250) {
+          edges {
+            node { id title handle }
+          }
+        }
+      }`),
+  ]);
 
-  const collectionsData = (await collectionsResponse.json()) as {
-    data?: {
-      collections?: {
-        edges?: Array<{
-          node: ShopifyCollection;
-        }>;
-      };
-    };
-    errors?: Array<{ message: string }>;
-  };
+  const [productsData, collectionsData] = await Promise.all([
+    productsRes.json() as Promise<any>,
+    collectionsRes.json() as Promise<any>,
+  ]);
 
-  const collections: ShopifyCollection[] =
-    collectionsData.data?.collections?.edges?.map((edge) => edge.node) || [];
+  const productNodes: Array<{ vendor: string; productType: string; tags: string[] }> =
+    productsData.data?.products?.edges?.map((e: any) => e.node) || [];
+
+  // Extract unique, sorted values
+  const vendors = [...new Set(productNodes.map((p) => p.vendor).filter(Boolean))].sort();
+  const productTypes = [...new Set(productNodes.map((p) => p.productType).filter(Boolean))].sort();
+  const tags = [...new Set(productNodes.flatMap((p) => p.tags || []).filter(Boolean))].sort();
+  const collections: Array<{ id: string; title: string; handle: string }> =
+    collectionsData.data?.collections?.edges?.map((e: any) => e.node) || [];
 
   const [fallbacks, charts] = await Promise.all([
     prisma.fallbackMapping.findMany({
@@ -58,7 +56,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }),
   ]);
 
-  return { fallbacks, charts, collections };
+  return { fallbacks, charts, vendors, productTypes, tags, collections };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -70,18 +68,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const chartId = formData.get("chartId") as string;
     const mappingType = formData.get("mappingType") as string;
     const mappingValue = (formData.get("mappingValue") as string)?.trim();
-    const priority = parseInt(formData.get("priority") as string) || 0;
-
     if (chartId && mappingType && mappingValue) {
       await prisma.fallbackMapping.create({
-        data: { shop: session.shop, chartId, mappingType, mappingValue, priority },
+        data: { shop: session.shop, chartId, mappingType, mappingValue, priority: 0 },
       });
     }
   }
 
   if (intent === "delete") {
-    const id = formData.get("id") as string;
-    await prisma.fallbackMapping.deleteMany({ where: { id, shop: session.shop } });
+    await prisma.fallbackMapping.deleteMany({ where: { id: formData.get("id") as string, shop: session.shop } });
   }
 
   return null;
@@ -94,141 +89,79 @@ const TYPE_LABELS: Record<string, string> = {
   collection: "Collection",
 };
 
-function CollectionSelector({
-  collections,
+// ─── Reusable searchable dropdown ─────────────────────────────────────────────
+
+function SearchableSelect({
+  options,
   value,
   onChange,
+  placeholder = "Select...",
 }: {
-  collections: ShopifyCollection[];
+  options: { label: string; sublabel?: string; value: string }[];
   value: string;
   onChange: (value: string) => void;
+  placeholder?: string;
 }) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
-  const [selectedCollection, setSelectedCollection] = useState<ShopifyCollection | null>(
-    value && collections.find((c) => c.handle === value) ? collections.find((c) => c.handle === value)! : null
-  );
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
 
-  const filteredCollections = useMemo(() => {
-    if (!searchTerm.trim()) return collections;
-    const term = searchTerm.toLowerCase();
-    return collections.filter(
-      (c) => c.title.toLowerCase().includes(term) || c.handle.toLowerCase().includes(term)
-    );
-  }, [searchTerm, collections]);
+  const selected = options.find((o) => o.value === value) || null;
 
-  const handleSelect = (collection: ShopifyCollection) => {
-    setSelectedCollection(collection);
-    onChange(collection.handle);
-    setIsOpen(false);
-    setSearchTerm("");
+  const filtered = useMemo(() => {
+    if (!search.trim()) return options;
+    const t = search.toLowerCase();
+    return options.filter((o) => o.label.toLowerCase().includes(t) || o.sublabel?.toLowerCase().includes(t));
+  }, [search, options]);
+
+  const select = (opt: typeof options[0]) => {
+    onChange(opt.value);
+    setOpen(false);
+    setSearch("");
   };
 
   return (
-    <div style={{ position: "relative", flex: 2 }}>
+    <div style={{ position: "relative" }}>
       <div
-        style={{
-          border: "1px solid #c9cccf",
-          borderRadius: "6px",
-          padding: "10px 12px",
-          cursor: "pointer",
-          background: "#fff",
-          fontSize: "14px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          transition: "border-color 0.2s",
-          borderColor: isOpen ? "#1a73e8" : "#c9cccf",
-        }}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setOpen(!open)}
+        style={{ border: `1px solid ${open ? "#1a1a1a" : "#c9cccf"}`, borderRadius: 6, padding: "10px 12px", cursor: "pointer", background: "#fff", fontSize: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}
       >
         <span>
-          {selectedCollection ? (
-            <div>
-              <div style={{ fontWeight: 500, color: "#1a1a1a" }}>{selectedCollection.title}</div>
-              <div style={{ fontSize: "12px", color: "#6d7175", marginTop: "2px" }}>
-                {selectedCollection.handle}
-              </div>
-            </div>
+          {selected ? (
+            <span>
+              <span style={{ fontWeight: 500, color: "#1a1a1a" }}>{selected.label}</span>
+              {selected.sublabel && <span style={{ fontSize: 12, color: "#6d7175", marginLeft: 8 }}>{selected.sublabel}</span>}
+            </span>
           ) : (
-            <span style={{ color: "#9c9da0" }}>Search or select collection...</span>
+            <span style={{ color: "#9c9da0" }}>{placeholder}</span>
           )}
         </span>
-        <span style={{ color: "#6d7175", marginLeft: "8px", flexShrink: 0 }}>
-          {isOpen ? "▲" : "▼"}
-        </span>
+        <span style={{ color: "#6d7175", fontSize: 11 }}>{open ? "▲" : "▼"}</span>
       </div>
 
-      {isOpen && (
-        <div
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            background: "#fff",
-            border: "1px solid #c9cccf",
-            borderRadius: "6px",
-            marginTop: "4px",
-            zIndex: 10,
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.12)",
-          }}
-        >
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #c9cccf", borderRadius: 6, zIndex: 20, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>
           <input
-            type="text"
-            placeholder="Search by title or handle..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              border: "none",
-              borderBottom: "1px solid #e1e3e5",
-              borderRadius: "6px 6px 0 0",
-              fontSize: "14px",
-              boxSizing: "border-box",
-              outline: "none",
-            }}
-            onClick={(e) => e.stopPropagation()}
             autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Search..."
+            style={{ width: "100%", padding: "10px 12px", border: "none", borderBottom: "1px solid #e1e3e5", borderRadius: "6px 6px 0 0", fontSize: 13, boxSizing: "border-box", outline: "none" } as React.CSSProperties}
           />
-          <div
-            style={{
-              maxHeight: "240px",
-              overflowY: "auto",
-            }}
-          >
-            {filteredCollections.length === 0 ? (
-              <div style={{ padding: "12px 12px", color: "#6d7175", fontSize: "13px", textAlign: "center" }}>
-                No collections found
-              </div>
+          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: "12px", color: "#9c9da0", fontSize: 13, textAlign: "center" }}>No results</div>
             ) : (
-              filteredCollections.map((collection) => (
+              filtered.map((opt) => (
                 <div
-                  key={collection.id}
-                  onClick={() => handleSelect(collection)}
-                  style={{
-                    padding: "10px 12px",
-                    borderBottom: "1px solid #f3f3f3",
-                    cursor: "pointer",
-                    fontSize: "13px",
-                    background:
-                      selectedCollection?.id === collection.id ? "#f6f6f7" : "#fff",
-                    transition: "background 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.background =
-                      "#f6f6f7";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.background =
-                      selectedCollection?.id === collection.id ? "#f6f6f7" : "#fff";
-                  }}
+                  key={opt.value}
+                  onClick={() => select(opt)}
+                  style={{ padding: "10px 12px", borderBottom: "1px solid #f3f3f3", cursor: "pointer", background: value === opt.value ? "#f6f6f7" : "#fff", fontSize: 13 }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "#f6f6f7"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = value === opt.value ? "#f6f6f7" : "#fff"; }}
                 >
-                  <div style={{ fontWeight: 500, color: "#1a1a1a" }}>{collection.title}</div>
-                  <div style={{ fontSize: "11px", color: "#9c9da0", marginTop: "2px" }}>
-                    {collection.handle}
-                  </div>
+                  <div style={{ fontWeight: 500, color: "#1a1a1a" }}>{opt.label}</div>
+                  {opt.sublabel && <div style={{ fontSize: 11, color: "#9c9da0", marginTop: 2 }}>{opt.sublabel}</div>}
                 </div>
               ))
             )}
@@ -239,55 +172,54 @@ function CollectionSelector({
   );
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function FallbacksPage() {
-  const { fallbacks, charts, collections } = useLoaderData<typeof loader>();
+  const { fallbacks, charts, vendors, productTypes, tags, collections } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
-  const chartIdRef = useRef<HTMLSelectElement>(null);
-  const typeRef = useRef<HTMLSelectElement>(null);
-  const valueRef = useRef<HTMLInputElement>(null);
-  const priorityRef = useRef<HTMLInputElement>(null);
-  const selectedCollectionRef = useRef<string | null>(null);
 
-  const currentType = typeRef.current?.value || "tag";
+  const [selectedChartId, setSelectedChartId] = useState("");
+  const [selectedType, setSelectedType] = useState("tag");
+  const [selectedValue, setSelectedValue] = useState("");
 
-  const handleCollectionSelect = (value: string) => {
-    selectedCollectionRef.current = value;
+  const chartOptions = charts.map((c) => ({ label: c.title, value: c.id }));
+
+  // Options per type
+  const valueOptions = useMemo(() => {
+    if (selectedType === "vendor") return vendors.map((v) => ({ label: v, value: v }));
+    if (selectedType === "product_type") return productTypes.map((t) => ({ label: t, value: t }));
+    if (selectedType === "tag") return tags.map((t) => ({ label: t, value: t }));
+    if (selectedType === "collection") return collections.map((c) => ({ label: c.title, sublabel: c.handle, value: c.handle }));
+    return [];
+  }, [selectedType, vendors, productTypes, tags, collections]);
+
+  const valuePlaceholder: Record<string, string> = {
+    tag: "Select a tag...",
+    vendor: "Select a vendor...",
+    product_type: "Select a product type...",
+    collection: "Select a collection...",
   };
 
   const handleAdd = () => {
-    const chartId = chartIdRef.current?.value || "";
-    const mappingType = typeRef.current?.value || "";
-
-    // For collections, use the dropdown value if available
-    const mappingValue =
-      mappingType === "collection"
-        ? selectedCollectionRef.current?.trim() || ""
-        : valueRef.current?.value?.trim() || "";
-
-    const priority = priorityRef.current?.value || "0";
-    if (!chartId || !mappingType || !mappingValue) return;
-    fetcher.submit({ intent: "add", chartId, mappingType, mappingValue, priority }, { method: "post" });
-    if (valueRef.current) valueRef.current.value = "";
-    selectedCollectionRef.current = null;
-    if (priorityRef.current) priorityRef.current.value = "0";
+    if (!selectedChartId || !selectedType || !selectedValue) return;
+    fetcher.submit(
+      { intent: "add", chartId: selectedChartId, mappingType: selectedType, mappingValue: selectedValue },
+      { method: "post" }
+    );
+    setSelectedChartId("");
+    setSelectedValue("");
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm("Remove this fallback rule?")) {
-      fetcher.submit({ intent: "delete", id }, { method: "post" });
-    }
-  };
+  const canAdd = !!selectedChartId && !!selectedValue;
 
   return (
     <s-page heading="Fallback Rules">
       <s-section slot="aside" heading="How fallbacks work">
         <s-paragraph>
-          Fallback rules show a size chart based on product attributes. Use this when
-          you have many products that should share the same chart.
+          Show a size chart based on product attributes — useful when many products share the same chart.
         </s-paragraph>
         <s-paragraph>
-          Rules are checked in priority order (highest first). Product-specific
-          mappings always take precedence over fallback rules.
+          Product-specific mappings always take priority over fallback rules.
         </s-paragraph>
       </s-section>
 
@@ -295,68 +227,67 @@ export default function FallbacksPage() {
         {charts.length === 0 ? (
           <s-paragraph>Create a size chart first.</s-paragraph>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Chart */}
             <div>
-              <label style={{ display: "block", marginBottom: "8px", fontWeight: 500, fontSize: "14px", color: "#1a1a1a" }}>
-                Size chart
-              </label>
-              <select ref={chartIdRef} style={selectStyle}>
-                <option value="">Select a chart...</option>
-                {charts.map((chart) => (
-                  <option key={chart.id} value={chart.id}>
-                    {chart.title}
-                  </option>
+              <label style={lbl}>Size chart</label>
+              <SearchableSelect
+                options={chartOptions}
+                value={selectedChartId}
+                onChange={setSelectedChartId}
+                placeholder="Select a chart..."
+              />
+            </div>
+
+            {/* Match type */}
+            <div>
+              <label style={lbl}>Match by</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {(["tag", "vendor", "product_type", "collection"] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => { setSelectedType(type); setSelectedValue(""); }}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 6,
+                      border: `1.5px solid ${selectedType === type ? "#1a1a1a" : "#c9cccf"}`,
+                      background: selectedType === type ? "#1a1a1a" : "#fff",
+                      color: selectedType === type ? "#fff" : "#1a1a1a",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {TYPE_LABELS[type]}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
 
-            <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: "block", marginBottom: "8px", fontWeight: 500, fontSize: "14px", color: "#1a1a1a" }}>
-                  Match by
-                </label>
-                <select ref={typeRef} style={selectStyle}>
-                  <option value="tag">Product tag</option>
-                  <option value="vendor">Vendor</option>
-                  <option value="product_type">Product type</option>
-                  <option value="collection">Collection</option>
-                </select>
-              </div>
-
-              {currentType === "collection" ? (
-                <CollectionSelector
-                  collections={collections}
-                  value={selectedCollectionRef.current || ""}
-                  onChange={handleCollectionSelect}
-                />
+            {/* Value dropdown */}
+            <div>
+              <label style={lbl}>{TYPE_LABELS[selectedType]}</label>
+              {valueOptions.length === 0 ? (
+                <p style={{ fontSize: 13, color: "#9c9da0", margin: 0 }}>
+                  No {TYPE_LABELS[selectedType].toLowerCase()}s found in your store.
+                </p>
               ) : (
-                <div style={{ flex: 2 }}>
-                  <label style={{ display: "block", marginBottom: "8px", fontWeight: 500, fontSize: "14px", color: "#1a1a1a" }}>
-                    Value
-                  </label>
-                  <input
-                    ref={valueRef}
-                    style={inputStyle}
-                    placeholder="e.g. womens, Memery, T-Shirts"
-                  />
-                </div>
-              )}
-
-              <div style={{ width: "90px" }}>
-                <label style={{ display: "block", marginBottom: "8px", fontWeight: 500, fontSize: "14px", color: "#1a1a1a" }}>
-                  Priority
-                </label>
-                <input
-                  ref={priorityRef}
-                  type="number"
-                  defaultValue="0"
-                  style={inputStyle}
+                <SearchableSelect
+                  options={valueOptions}
+                  value={selectedValue}
+                  onChange={setSelectedValue}
+                  placeholder={valuePlaceholder[selectedType]}
                 />
-              </div>
+              )}
             </div>
 
             <div>
-              <button onClick={handleAdd} style={btnPrimaryStyle}>
+              <button
+                onClick={handleAdd}
+                disabled={!canAdd}
+                style={{ ...btnPrimary, opacity: canAdd ? 1 : 0.5, cursor: canAdd ? "pointer" : "not-allowed" }}
+              >
                 Add rule
               </button>
             </div>
@@ -368,39 +299,20 @@ export default function FallbacksPage() {
         {fallbacks.length === 0 ? (
           <s-paragraph>No fallback rules yet.</s-paragraph>
         ) : (
-          <div style={{ border: "1px solid #e1e3e5", borderRadius: "8px", overflow: "hidden" }}>
-            {fallbacks.map((fb, index) => (
-              <div
-                key={fb.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "14px 16px",
-                  borderBottom: index < fallbacks.length - 1 ? "1px solid #e1e3e5" : "none",
-                  background: "#fff",
-                }}
-              >
+          <div style={{ border: "1px solid #e1e3e5", borderRadius: 8, overflow: "hidden" }}>
+            {fallbacks.map((fb, i) => (
+              <div key={fb.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: i < fallbacks.length - 1 ? "1px solid #e1e3e5" : "none", background: "#fff" }}>
                 <div>
-                  <div style={{ fontSize: "14px", fontWeight: 500, color: "#1a1a1a" }}>
-                    {fb.chart.title}
-                  </div>
-                  <div style={{ fontSize: "13px", color: "#6d7175", marginTop: "4px" }}>
-                    <span style={{ marginRight: "6px" }}>
-                      {TYPE_LABELS[fb.mappingType] || fb.mappingType}:
+                  <div style={{ fontSize: 14, fontWeight: 500, color: "#1a1a1a" }}>{fb.chart.title}</div>
+                  <div style={{ fontSize: 13, color: "#6d7175", marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ background: "#f0f0f0", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 500, color: "#555" }}>
+                      {TYPE_LABELS[fb.mappingType] || fb.mappingType}
                     </span>
-                    <code style={{ background: "#f6f6f7", padding: "2px 6px", borderRadius: "4px" }}>
-                      {fb.mappingValue}
-                    </code>
-                    <span style={{ marginLeft: "12px", color: "#9c9da0", fontSize: "12px" }}>
-                      priority {fb.priority}
-                    </span>
+                    <span>→</span>
+                    <span style={{ fontWeight: 500 }}>{fb.mappingValue}</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDelete(fb.id)}
-                  style={btnDangerStyle}
-                >
+                <button onClick={() => { if (confirm("Remove this fallback rule?")) fetcher.submit({ intent: "delete", id: fb.id }, { method: "post" }); }} style={btnDanger}>
                   Remove
                 </button>
               </div>
@@ -412,9 +324,8 @@ export default function FallbacksPage() {
   );
 }
 
-const inputStyle = { width: "100%", padding: "10px 12px", border: "1px solid #c9cccf", borderRadius: "6px", fontSize: "14px", boxSizing: "border-box" as const, outline: "none" } as React.CSSProperties;
-const selectStyle = { width: "100%", padding: "10px 12px", border: "1px solid #c9cccf", borderRadius: "6px", fontSize: "14px", background: "#fff", boxSizing: "border-box" as const, outline: "none" } as React.CSSProperties;
-const btnPrimaryStyle = { background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "10px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer", transition: "background 0.2s" } as React.CSSProperties;
-const btnDangerStyle = { background: "#fff", color: "#d72c0d", border: "1px solid #ffa8a0", borderRadius: 6, padding: "8px 14px", fontSize: 13, cursor: "pointer", transition: "all 0.2s" } as React.CSSProperties;
+const lbl: React.CSSProperties = { display: "block", marginBottom: 8, fontWeight: 500, fontSize: 14, color: "#1a1a1a" };
+const btnPrimary: React.CSSProperties = { background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "10px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
+const btnDanger: React.CSSProperties = { background: "#fff", color: "#d72c0d", border: "1px solid #ffa8a0", borderRadius: 6, padding: "8px 14px", fontSize: 13, cursor: "pointer" };
 
 export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);
