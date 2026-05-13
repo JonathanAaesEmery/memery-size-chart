@@ -400,6 +400,11 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
     sub({ intent: "update-column", columnId: col.id, name: col.name, customerInputEnabled: String(!col.customerInputEnabled), isMatchingKey: String(col.isMatchingKey), inputLabel: col.name, apparelMeasurementType: col.apparelMeasurementType || "" });
   };
 
+  const toggleMeasurement = (col: any) => {
+    const newType = col.columnType === "measurement" ? "size_label" : "measurement";
+    sub({ intent: "update-column", columnId: col.id, name: col.name, columnType: newType, customerInputEnabled: String(col.customerInputEnabled), isMatchingKey: String(col.isMatchingKey), inputLabel: col.inputLabel || col.name, apparelMeasurementType: col.apparelMeasurementType || "" });
+  };
+
   const deleteCol = (col: any) => {
     if (confirm(`Remove column "${col.name}" and all its data?`)) sub({ intent: "delete-column", columnId: col.id });
   };
@@ -480,11 +485,19 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
                     <button type="button" onClick={() => deleteCol(col)} title="Remove column"
                       style={{ border: "none", background: "none", cursor: "pointer", color: "#c0c0c0", padding: "5px 9px", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
                   </div>
-                  {/* Matching toggle */}
-                  <button type="button" onClick={() => toggleMatching(col)} title={col.customerInputEnabled ? "Click to make label column" : "Click to enable size recommendation"}
-                    style={{ width: "auto", margin: "0 auto", display: "block", border: `1.5px solid ${col.customerInputEnabled ? "#7c3aed" : "#ddd"}`, background: col.customerInputEnabled ? "#f0ebff" : "#fafafa", cursor: "pointer", padding: "5px 12px", fontSize: 11, fontWeight: 600, color: col.customerInputEnabled ? "#7c3aed" : "#666", borderRadius: 6, transition: "all 0.15s", letterSpacing: "0.02em" }}>
-                    {col.customerInputEnabled ? "📏 Matching" : "Label"}
-                  </button>
+                  {/* Column type buttons */}
+                  <div style={{ display: "flex", gap: 4, padding: "4px 6px", flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => toggleMatching(col)} title={col.customerInputEnabled ? "Click to disable size recommendation" : "Click to enable size recommendation"}
+                      style={{ border: `1.5px solid ${col.customerInputEnabled ? "#7c3aed" : "#ddd"}`, background: col.customerInputEnabled ? "#f0ebff" : "#fafafa", cursor: "pointer", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: col.customerInputEnabled ? "#7c3aed" : "#666", borderRadius: 6, transition: "all 0.15s" }}>
+                      {col.customerInputEnabled ? "📏 Matching" : "Label"}
+                    </button>
+                    {!col.customerInputEnabled && (
+                      <button type="button" onClick={() => toggleMeasurement(col)} title={col.columnType === "measurement" ? "Click to remove cm/in conversion" : "Click to enable cm/in conversion"}
+                        style={{ border: `1.5px solid ${col.columnType === "measurement" ? "#0891b2" : "#ddd"}`, background: col.columnType === "measurement" ? "#e0f7fa" : "#fafafa", cursor: "pointer", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: col.columnType === "measurement" ? "#0891b2" : "#aaa", borderRadius: 6, transition: "all 0.15s" }}>
+                        cm/in
+                      </button>
+                    )}
+                  </div>
                 </th>
               ))}
 

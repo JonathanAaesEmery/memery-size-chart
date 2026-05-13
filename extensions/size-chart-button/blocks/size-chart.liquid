@@ -5,22 +5,43 @@
 {% assign app_url = app.url | default: "https://memery-size-chart-production.up.railway.app" %}
 {% if app_url == blank %}{% assign app_url = "https://memery-size-chart-production.up.railway.app" %}{% endif %}
 
+{% assign accent = block.settings.accent_color | default: '#000000' %}
+{% assign btn_style = block.settings.button_style | default: 'underline' %}
+
 <div id="size-chart-wrapper-{{ block.id }}" style="margin: 8px 0;">
   <button
     id="size-chart-btn-{{ block.id }}"
     type="button"
     style="
-      background: none;
-      border: none;
-      padding: 0;
+      {% if btn_style == 'filled' %}
+        background: {{ accent }};
+        color: #ffffff;
+        border: none;
+        border-radius: 4px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+      {% elsif btn_style == 'outline' %}
+        background: transparent;
+        color: {{ accent }};
+        border: 2px solid {{ accent }};
+        border-radius: 4px;
+        padding: 9px 20px;
+        font-size: 14px;
+        font-weight: 600;
+      {% else %}
+        background: none;
+        border: none;
+        padding: 0;
+        font-size: 14px;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        color: {{ accent }};
+      {% endif %}
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      font-size: 14px;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-      color: {{ block.settings.button_color | default: '#000000' }};
       font-family: inherit;
     "
   >
@@ -61,14 +82,14 @@
         justify-content: space-between;
         align-items: center;
         padding: 16px 20px;
-        border-bottom: 1px solid #e1e3e5;
-        background: #fff;
+        border-bottom: 1px solid {{ block.settings.accent_color | default: '#000000' }}22;
+        background: {{ block.settings.header_bg | default: '#ffffff' }};
       ">
-        <strong id="size-chart-title-{{ block.id }}" style="font-size: 16px;">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
+        <strong id="size-chart-title-{{ block.id }}" style="font-size: 16px; color: {{ block.settings.header_text_color | default: '#1a1a1a' }};">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
         <div style="display: flex; align-items: center; gap: 12px;">
           <!-- CM/IN toggle -->
           <div id="size-chart-unit-toggle-{{ block.id }}" style="display:none; background:#f1f1f1; border-radius:20px; padding:2px; align-items:center;">
-            <button id="size-chart-cm-btn-{{ block.id }}" type="button" style="border:none;cursor:pointer;border-radius:18px;padding:4px 12px;font-size:12px;font-weight:600;background:#000;color:#fff;transition:all 0.15s;">cm</button>
+            <button id="size-chart-cm-btn-{{ block.id }}" type="button" style="border:none;cursor:pointer;border-radius:18px;padding:4px 12px;font-size:12px;font-weight:600;background:{{ accent }};color:#fff;transition:all 0.15s;">cm</button>
             <button id="size-chart-in-btn-{{ block.id }}" type="button" style="border:none;cursor:pointer;border-radius:18px;padding:4px 12px;font-size:12px;font-weight:600;background:transparent;color:#555;transition:all 0.15s;">in</button>
           </div>
           <button
@@ -98,6 +119,9 @@
   var productTags = '{{ product.tags }}';
   var vendor = encodeURIComponent('{{ product.vendor }}');
   var productType = encodeURIComponent('{{ product.type }}');
+  var accentColor = '{{ accent }}';
+  var headerBg = '{{ block.settings.header_bg | default: "#ffffff" }}';
+  var headerTextColor = '{{ block.settings.header_text_color | default: "#1a1a1a" }}';
 
   console.log('[Size Chart Block] blockId:', blockId, 'appUrl:', appUrl, 'shop:', shop, 'productHandle:', productHandle);
 
@@ -132,10 +156,10 @@
   function setUnit(unit) {
     currentUnit = unit;
     if (unit === 'cm') {
-      cmBtn.style.background = '#000'; cmBtn.style.color = '#fff';
+      cmBtn.style.background = accentColor; cmBtn.style.color = '#fff';
       inBtn.style.background = 'transparent'; inBtn.style.color = '#555';
     } else {
-      inBtn.style.background = '#000'; inBtn.style.color = '#fff';
+      inBtn.style.background = accentColor; inBtn.style.color = '#fff';
       cmBtn.style.background = 'transparent'; cmBtn.style.color = '#555';
     }
     if (chartData) rebuildTable();
@@ -262,7 +286,7 @@
       html += '</div>';
     });
 
-    html += '<button id="sc-find-btn-' + blockId + '" type="button" style="background:#000;color:#fff;border:none;border-radius:4px;padding:8px 18px;font-size:14px;cursor:pointer;white-space:nowrap;align-self:flex-end;">Find size</button>';
+    html += '<button id="sc-find-btn-' + blockId + '" type="button" style="background:' + accentColor + ';color:#fff;border:none;border-radius:4px;padding:8px 18px;font-size:14px;cursor:pointer;white-space:nowrap;align-self:flex-end;">Find size</button>';
     html += '</div></div>';
     return html;
   }
@@ -358,7 +382,7 @@
   function showResult(highlightRowId, message) {
     var resultEl = document.getElementById('sc-result-' + blockId);
     if (resultEl) {
-      resultEl.innerHTML = '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:12px 16px;font-size:14px;color:#1b5e20;">' + message + '</div>';
+      resultEl.innerHTML = '<div style="background:' + accentColor + '14;border:1px solid ' + accentColor + '44;border-radius:6px;padding:12px 16px;font-size:14px;color:' + accentColor + ';">' + message + '</div>';
     }
     // Re-render table with highlight
     var tableEl = document.getElementById('sc-table-' + blockId);
@@ -380,7 +404,7 @@
       if (col.columnType === 'measurement') {
         label = esc(col.name) + '<br><span style="color:#6d7175;font-weight:normal;font-size:11px;">(' + currentUnit + ')</span>';
       }
-      html += '<th style="padding:8px 12px;border:1px solid #e1e3e5;background:#f6f6f7;text-align:left;white-space:nowrap;">' + label + '</th>';
+      html += '<th style="padding:8px 12px;border:1px solid #e1e3e5;background:' + accentColor + '14;text-align:left;white-space:nowrap;">' + label + '</th>';
     });
     html += '</tr></thead><tbody>';
 
@@ -388,7 +412,7 @@
     chart.rows.forEach(function(row) {
       var isHighlight = highlightRowId && row.id === highlightRowId;
       var rowStyle = isHighlight
-        ? 'background:#e8f5e9;outline:2px solid #4caf50;outline-offset:-1px;'
+        ? 'background:' + accentColor + '18;outline:2px solid ' + accentColor + ';outline-offset:-1px;'
         : '';
       html += '<tr style="' + rowStyle + '">';
       chart.columns.forEach(function(col) {
@@ -459,16 +483,48 @@
   "target": "section",
   "settings": [
     {
+      "type": "header",
+      "content": "Button"
+    },
+    {
       "type": "text",
       "id": "button_text",
       "label": "Button text",
       "default": "Size Guide"
     },
     {
+      "type": "select",
+      "id": "button_style",
+      "label": "Button style",
+      "default": "underline",
+      "options": [
+        { "value": "underline", "label": "Underline link" },
+        { "value": "outline", "label": "Outline button" },
+        { "value": "filled", "label": "Filled button" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Colors"
+    },
+    {
       "type": "color",
-      "id": "button_color",
-      "label": "Button color",
+      "id": "accent_color",
+      "label": "Accent color",
+      "info": "Used for buttons, highlights and table header",
       "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "header_bg",
+      "label": "Modal header background",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "header_text_color",
+      "label": "Modal header text color",
+      "default": "#1a1a1a"
     }
   ]
 }
