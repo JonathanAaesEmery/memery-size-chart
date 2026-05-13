@@ -72,11 +72,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   // ── Debug mode ────────────────────────────────────────────────────────────
   if (url.searchParams.get("debug") === "1") {
-    const [allMappings, allFallbacks] = await Promise.all([
+    const [allMappings, allFallbacks, shopList] = await Promise.all([
       prisma.productMapping.findMany({ where: { shop }, select: { productHandle: true, productId: true, chartId: true } }),
       prisma.fallbackMapping.findMany({ where: { shop }, select: { mappingType: true, mappingValue: true, chartId: true } }),
+      prisma.fallbackMapping.findMany({ distinct: ["shop"], select: { shop: true }, take: 20 }),
     ]);
-    return Response.json({ shop, allMappings, allFallbacks, receivedTags: tagsParam, receivedVendor: vendor, receivedProductType: productType }, { headers: CORS });
+    return Response.json({ shopQueried: shop, shopsInDB: shopList.map(s => s.shop), allMappings, allFallbacks, receivedTags: tagsParam, receivedVendor: vendor, receivedProductType: productType }, { headers: CORS });
   }
 
   // ── Cache lookup ──────────────────────────────────────────────────────────
