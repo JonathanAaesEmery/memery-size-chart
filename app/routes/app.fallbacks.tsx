@@ -89,7 +89,7 @@ const TYPE_LABELS: Record<string, string> = {
   collection: "Collection",
 };
 
-// ─── Reusable searchable dropdown ─────────────────────────────────────────────
+// ─── Reusable searchable dropdown (position:fixed to escape overflow clipping) ──
 
 function SearchableSelect({
   options,
@@ -104,6 +104,8 @@ function SearchableSelect({
 }) {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const triggerRef = React.useRef<HTMLDivElement>(null);
 
   const selected = options.find((o) => o.value === value) || null;
 
@@ -113,6 +115,27 @@ function SearchableSelect({
     return options.filter((o) => o.label.toLowerCase().includes(t) || o.sublabel?.toLowerCase().includes(t));
   }, [search, options]);
 
+  const openDropdown = () => {
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setOpen(true);
+  };
+
+  // Close on outside click
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
   const select = (opt: typeof options[0]) => {
     onChange(opt.value);
     setOpen(false);
@@ -120,9 +143,9 @@ function SearchableSelect({
   };
 
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={triggerRef}>
       <div
-        onClick={() => setOpen(!open)}
+        onClick={() => open ? setOpen(false) : openDropdown()}
         style={{ border: `1px solid ${open ? "#1a1a1a" : "#c9cccf"}`, borderRadius: 6, padding: "10px 12px", cursor: "pointer", background: "#fff", fontSize: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}
       >
         <span>
@@ -138,8 +161,8 @@ function SearchableSelect({
         <span style={{ color: "#6d7175", fontSize: 11 }}>{open ? "▲" : "▼"}</span>
       </div>
 
-      {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #c9cccf", borderRadius: 6, zIndex: 20, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>
+      {open && rect && (
+        <div style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width, background: "#fff", border: "1px solid #c9cccf", borderRadius: 6, zIndex: 9999, boxShadow: "0 4px 16px rgba(0,0,0,0.15)" }}>
           <input
             autoFocus
             value={search}
@@ -155,7 +178,7 @@ function SearchableSelect({
               filtered.map((opt) => (
                 <div
                   key={opt.value}
-                  onClick={() => select(opt)}
+                  onMouseDown={(e) => { e.preventDefault(); select(opt); }}
                   style={{ padding: "10px 12px", borderBottom: "1px solid #f3f3f3", cursor: "pointer", background: value === opt.value ? "#f6f6f7" : "#fff", fontSize: 13 }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "#f6f6f7"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = value === opt.value ? "#f6f6f7" : "#fff"; }}
