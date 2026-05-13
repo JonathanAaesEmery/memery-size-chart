@@ -61,31 +61,34 @@
       inset: 0;
       background: rgba(0,0,0,0.5);
       z-index: 9999;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
+      padding: 20px 16px;
+      overflow-y: auto;
+      box-sizing: border-box;
     "
   >
     <div style="
       background: #fff;
       border-radius: 8px;
-      width: calc(100% - 32px);
+      width: 100%;
       max-width: 680px;
-      max-height: 90vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      margin: auto;
     ">
       <!-- Modal header — fast, scroller ikke med -->
       <div style="
         flex-shrink: 0;
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-end;
         align-items: center;
-        padding: 16px 20px;
+        padding: 12px 16px;
         border-bottom: 1px solid #e1e3e5;
         background: #ffffff;
       ">
-        <strong id="size-chart-title-{{ block.id }}" style="font-size: 16px; color: #1a1a1a;">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
+        <span id="size-chart-title-{{ block.id }}" style="display:none;"></span>
         <div style="display: flex; align-items: center; gap: 12px;">
           <!-- CM/IN toggle -->
           <div id="size-chart-unit-toggle-{{ block.id }}" style="display:none; background:#f1f1f1; border-radius:20px; padding:2px; align-items:center;">
@@ -287,8 +290,14 @@
     var images = chart.images || [];
     var imageLayout = chart.imageLayout || 'above';
 
+    // Title + description at top of body
+    if (chart.title) {
+      html += '<h2 style="margin:0 0 6px;font-size:20px;font-weight:700;color:#1a1a1a;line-height:1.2;">' + esc(chart.title) + '</h2>';
+    }
     if (chart.description) {
-      html += '<p style="margin:0 0 16px;color:#6d7175;font-size:14px;">' + esc(chart.description) + '</p>';
+      html += '<p style="margin:0 0 20px;color:#6d7175;font-size:14px;">' + esc(chart.description) + '</p>';
+    } else {
+      html += '<div style="margin-bottom:20px;"></div>';
     }
 
     // Input section (if any column has customerInputEnabled)
