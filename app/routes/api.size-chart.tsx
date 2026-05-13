@@ -31,6 +31,63 @@ export function invalidateCache(shop: string) {
   }
 }
 
+// ─── Translations ─────────────────────────────────────────────────────────────
+
+const TRANSLATIONS: Record<string, Record<string, string>> = {
+  en: {
+    findYourSize: "Find your size",
+    findSize: "Find size",
+    enterMeasurements: "Enter your measurements",
+    findPerfectSize: "Find your perfect size.",
+    yourSizeIs: "Your size is",
+    yourRecommendedSizeIs: "Your recommended size is",
+    noSizeMatch: "No size matches your measurements. Try a different value.",
+    noExactMatch: "No exact size match. Try adjusting your measurements.",
+    loading: "Loading...",
+    couldNotLoad: "Could not load size guide.",
+    measurementsMatched: "measurements matched",
+  },
+  dk: {
+    findYourSize: "Find din størrelse",
+    findSize: "Find størrelse",
+    enterMeasurements: "Indtast dine mål",
+    findPerfectSize: "Find din perfekte størrelse.",
+    yourSizeIs: "Din størrelse er",
+    yourRecommendedSizeIs: "Din anbefalede størrelse er",
+    noSizeMatch: "Ingen størrelse matcher dine mål. Prøv en anden værdi.",
+    noExactMatch: "Ingen nøjagtig størrelse. Prøv at justere dine mål.",
+    loading: "Indlæser...",
+    couldNotLoad: "Kunne ikke indlæse størrelsesguiden.",
+    measurementsMatched: "mål matchede",
+  },
+  de: {
+    findYourSize: "Finden Sie Ihre Größe",
+    findSize: "Größe finden",
+    enterMeasurements: "Geben Sie Ihre Maße ein",
+    findPerfectSize: "Finden Sie Ihre perfekte Größe.",
+    yourSizeIs: "Ihre Größe ist",
+    yourRecommendedSizeIs: "Ihre empfohlene Größe ist",
+    noSizeMatch: "Keine Größe passt zu Ihren Maßen. Bitte einen anderen Wert versuchen.",
+    noExactMatch: "Keine genaue Größe gefunden. Bitte Maße anpassen.",
+    loading: "Laden...",
+    couldNotLoad: "Größentabelle konnte nicht geladen werden.",
+    measurementsMatched: "Maße stimmten überein",
+  },
+  fr: {
+    findYourSize: "Trouvez votre taille",
+    findSize: "Trouver la taille",
+    enterMeasurements: "Entrez vos mesures",
+    findPerfectSize: "Trouvez votre taille parfaite.",
+    yourSizeIs: "Votre taille est",
+    yourRecommendedSizeIs: "Votre taille recommandée est",
+    noSizeMatch: "Aucune taille ne correspond à vos mesures. Essayez une autre valeur.",
+    noExactMatch: "Pas de correspondance exacte. Essayez d'ajuster vos mesures.",
+    loading: "Chargement...",
+    couldNotLoad: "Impossible de charger le guide des tailles.",
+    measurementsMatched: "mesures correspondaient",
+  },
+};
+
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS });
@@ -139,7 +196,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (row.settingValue) settings[row.settingKey] = row.settingValue;
   }
 
-  const result = { chart, settings };
+  const lang = settings.language || "en";
+  const translations = TRANSLATIONS[lang] || TRANSLATIONS.en;
+
+  const result = { chart, settings, translations };
 
   // ── Store in cache ────────────────────────────────────────────────────────
   cache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });

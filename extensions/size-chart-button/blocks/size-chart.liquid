@@ -103,7 +103,7 @@
 
       <!-- Modal body — scroller indeni -->
       <div id="size-chart-body-{{ block.id }}" style="overflow-y: auto; padding: 20px; flex: 1; min-height: 0;">
-        <p style="color:#6d7175;font-size:14px;">Loader...</p>
+        <p style="color:#6d7175;font-size:14px;">...</p>
       </div>
     </div>
   </div>
@@ -149,6 +149,19 @@
   var currentUnit = 'cm';
   var chartData = null;
   var CM_TO_IN = 0.393701;
+  var T = {
+    findYourSize: 'Find your size',
+    findSize: 'Find size',
+    enterMeasurements: 'Enter your measurements',
+    findPerfectSize: 'Find your perfect size.',
+    yourSizeIs: 'Your size is',
+    yourRecommendedSizeIs: 'Your recommended size is',
+    noSizeMatch: 'No size matches your measurements. Try a different value.',
+    noExactMatch: 'No exact size match. Try adjusting your measurements.',
+    loading: 'Loading...',
+    couldNotLoad: 'Could not load size guide.',
+    measurementsMatched: 'measurements matched',
+  };
 
   // ── Apply button style ─────────────────────────────────────────
   function applyButtonStyle(style, color) {
@@ -232,6 +245,7 @@
         if (s.accent_color) accentColor = s.accent_color;
         if (s.button_text) btn.childNodes[btn.childNodes.length - 1].textContent = ' ' + s.button_text;
         if (s.button_style) applyButtonStyle(s.button_style, accentColor);
+        if (data.translations) T = Object.assign(T, data.translations);
 
         // Apply accent to CM button
         cmBtn.style.background = accentColor;
@@ -307,21 +321,41 @@
   }
 
   // ── Input section ──────────────────────────────────────────────
+  function getColPlaceholder(col) {
+    var mins = [], maxs = [];
+    (chartData.rows || []).forEach(function(row) {
+      var cell = (row.cells || []).find(function(c) { return c.columnId === col.id; });
+      if (cell) {
+        if (cell.minValue != null) mins.push(cell.minValue);
+        if (cell.maxValue != null) maxs.push(cell.maxValue);
+      }
+    });
+    if (mins.length && maxs.length) {
+      var lo = Math.min.apply(null, mins);
+      var hi = Math.max.apply(null, maxs);
+      var mid = (lo + hi) / 2;
+      var val = currentUnit === 'in' ? mid * CM_TO_IN : mid;
+      return 'e.g. ' + (val % 1 === 0 ? String(Math.round(val)) : val.toFixed(1));
+    }
+    return 'e.g. ' + (currentUnit === 'in' ? '10' : '26');
+  }
+
   function buildInputSection(inputCols, chartType) {
     var unitLabel = currentUnit === 'cm' ? 'cm' : 'in';
     var html = '<div style="background:#f9f9f9;border:1px solid #e1e3e5;border-radius:8px;padding:16px;margin-bottom:20px;">';
-    html += '<p style="margin:0 0 12px;font-weight:600;font-size:14px;">Find your size</p>';
+    html += '<p style="margin:0 0 12px;font-weight:600;font-size:14px;">' + T.findYourSize + '</p>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">';
 
     inputCols.forEach(function(col) {
       var label = col.inputLabel || col.name;
+      var placeholder = getColPlaceholder(col);
       html += '<div style="display:flex;flex-direction:column;gap:4px;min-width:120px;">';
       html += '<label style="font-size:12px;color:#6d7175;" for="sc-input-' + blockId + '-' + col.id + '">' + esc(label) + ' (' + unitLabel + ')</label>';
-      html += '<input id="sc-input-' + blockId + '-' + col.id + '" data-col-id="' + col.id + '" type="number" min="0" step="0.1" placeholder="e.g. ' + (chartType === 'footwear' ? '26' : '88') + '" style="border:1px solid #ccc;border-radius:4px;padding:6px 10px;font-size:14px;width:100%;box-sizing:border-box;" />';
+      html += '<input id="sc-input-' + blockId + '-' + col.id + '" data-col-id="' + col.id + '" type="number" min="0" step="0.1" placeholder="' + placeholder + '" style="border:1px solid #ccc;border-radius:4px;padding:6px 10px;font-size:14px;width:100%;box-sizing:border-box;" />';
       html += '</div>';
     });
 
-    html += '<button id="sc-find-btn-' + blockId + '" type="button" style="background:' + accentColor + ';color:#fff;border:none;border-radius:4px;padding:8px 18px;font-size:14px;cursor:pointer;white-space:nowrap;align-self:flex-end;">Find size</button>';
+    html += '<button id="sc-find-btn-' + blockId + '" type="button" style="background:' + accentColor + ';color:#fff;border:none;border-radius:4px;padding:8px 18px;font-size:14px;cursor:pointer;white-space:nowrap;align-self:flex-end;">' + T.findSize + '</button>';
     html += '</div></div>';
     return html;
   }
@@ -345,7 +379,7 @@
     });
 
     if (Object.keys(inputs).length === 0) {
-      showResult(null, 'Enter your measurements to find your size.');
+      showResult(null, T.findPerfectSize);
       return;
     }
 
@@ -375,9 +409,9 @@
           var cell = (bestRow.cells || []).find(function(c) { return c.columnId === col.id; });
           return esc(col.name) + ': <strong>' + esc((cell && cell.value) || '–') + '</strong>';
         });
-        showResult(bestRow.id, 'Your size is ' + sizeLabels.join(', '));
+        showResult(bestRow.id, T.yourSizeIs + ' ' + sizeLabels.join(', '));
       } else {
-        showResult(null, 'No size matches your measurements. Try a different value.');
+        showResult(null, T.noSizeMatch);
       }
 
     } else {
@@ -398,7 +432,7 @@
       var maxScore = Math.max.apply(null, scores.map(function(s) { return s.score; }));
 
       if (maxScore === 0) {
-        showResult(null, 'No exact size match. Try adjusting your measurements.');
+        showResult(null, T.noExactMatch);
       } else {
         // Among tied rows, pick the largest (last in order)
         var best = scores.filter(function(s) { return s.score === maxScore; }).pop();
@@ -408,8 +442,8 @@
           return esc(col.name) + ': <strong>' + esc((cell && cell.value) || '–') + '</strong>';
         });
         var matchCount = Object.keys(inputs).length;
-        var note = maxScore < matchCount ? ' (' + maxScore + '/' + matchCount + ' measurements matched)' : '';
-        showResult(best.row.id, 'Your recommended size is ' + sizeLabels.join(', ') + note);
+        var note = maxScore < matchCount ? ' (' + maxScore + '/' + matchCount + ' ' + T.measurementsMatched + ')' : '';
+        showResult(best.row.id, T.yourRecommendedSizeIs + ' ' + sizeLabels.join(', ') + note);
       }
     }
   }
@@ -490,12 +524,12 @@
     if (chartData) {
       renderAll();
     } else {
-      body.innerHTML = '<p style="color:#6d7175;font-size:14px;">Loading...</p>';
+      body.innerHTML = '<p style="color:#6d7175;font-size:14px;">' + T.loading + '</p>';
       // Retry if preload hasn't finished yet
       var retries = 0;
       var wait = setInterval(function() {
         if (chartData) { clearInterval(wait); renderAll(); }
-        if (++retries > 20) { clearInterval(wait); body.innerHTML = '<p style="color:#d72c0d;font-size:14px;">Could not load size guide.</p>'; }
+        if (++retries > 20) { clearInterval(wait); body.innerHTML = '<p style="color:#d72c0d;font-size:14px;">' + T.couldNotLoad + '</p>'; }
       }, 100);
     }
   });

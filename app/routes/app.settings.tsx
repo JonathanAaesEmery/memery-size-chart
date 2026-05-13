@@ -21,13 +21,14 @@ async function setSetting(shop: string, key: string, value: string) {
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
-  const [defaultUnit, accentColor, buttonStyle, buttonText] = await Promise.all([
+  const [defaultUnit, accentColor, buttonStyle, buttonText, language] = await Promise.all([
     getSetting(shop, "default_unit", "cm"),
     getSetting(shop, "accent_color", "#1a1a1a"),
     getSetting(shop, "button_style", "underline"),
     getSetting(shop, "button_text", "Size Guide"),
+    getSetting(shop, "language", "en"),
   ]);
-  return { defaultUnit, accentColor, buttonStyle, buttonText };
+  return { defaultUnit, accentColor, buttonStyle, buttonText, language };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -39,6 +40,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     setSetting(shop, "accent_color", (formData.get("accentColor") as string) || "#1a1a1a"),
     setSetting(shop, "button_style", (formData.get("buttonStyle") as string) || "underline"),
     setSetting(shop, "button_text", (formData.get("buttonText") as string) || "Size Guide"),
+    setSetting(shop, "language", (formData.get("language") as string) || "en"),
   ]);
   return { success: true };
 };
@@ -60,6 +62,7 @@ export default function SettingsPage() {
   const accentHexRef = useRef<HTMLInputElement>(null);
   const buttonStyleRef = useRef<HTMLSelectElement>(null);
   const buttonTextRef = useRef<HTMLInputElement>(null);
+  const languageRef = useRef<HTMLSelectElement>(null);
 
   const [previewAccent, setPreviewAccent] = useState(data.accentColor);
   const [previewStyle, setPreviewStyle] = useState(data.buttonStyle);
@@ -71,6 +74,7 @@ export default function SettingsPage() {
       accentColor: accentRef.current?.value || "#1a1a1a",
       buttonStyle: buttonStyleRef.current?.value || "underline",
       buttonText: buttonTextRef.current?.value || "Size Guide",
+      language: languageRef.current?.value || "en",
     }, { method: "post" });
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -169,12 +173,23 @@ export default function SettingsPage() {
       <div style={card}>
         <h2 style={sectionTitle}>General</h2>
         <p style={sectionSub}>Default settings for all size charts</p>
-        <div style={{ maxWidth: 300 }}>
-          <label style={lbl}>Default measurement unit</label>
-          <select ref={unitRef} defaultValue={data.defaultUnit} style={inp}>
-            <option value="cm">Centimeters (cm)</option>
-            <option value="inch">Inches (in)</option>
-          </select>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 500 }}>
+          <div>
+            <label style={lbl}>Default measurement unit</label>
+            <select ref={unitRef} defaultValue={data.defaultUnit} style={inp}>
+              <option value="cm">Centimeters (cm)</option>
+              <option value="inch">Inches (in)</option>
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Language</label>
+            <select ref={languageRef} defaultValue={data.language} style={inp}>
+              <option value="en">🇬🇧 English</option>
+              <option value="dk">🇩🇰 Dansk</option>
+              <option value="de">🇩🇪 Deutsch</option>
+              <option value="fr">🇫🇷 Français</option>
+            </select>
+          </div>
         </div>
       </div>
 
