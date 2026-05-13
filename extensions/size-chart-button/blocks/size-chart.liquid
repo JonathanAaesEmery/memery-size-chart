@@ -253,11 +253,11 @@
         if (s.accent_color) accentColor = s.accent_color;
         if (s.button_text) btn.childNodes[btn.childNodes.length - 1].textContent = ' ' + s.button_text;
         if (s.button_style) applyButtonStyle(s.button_style, accentColor);
-        if (s.default_unit) setUnit(s.default_unit);
         if (data.translations) T = Object.assign(T, data.translations);
 
-        // Apply accent to CM button
-        cmBtn.style.background = accentColor;
+        // Apply default unit — normalize 'inch' → 'in'
+        var defaultUnit = s.default_unit === 'inch' ? 'in' : (s.default_unit || 'cm');
+        setUnit(defaultUnit);
 
         var hasMeasurements = (chartData.columns || []).some(function(c) { return c.columnType === 'measurement'; });
         if (hasMeasurements) {
