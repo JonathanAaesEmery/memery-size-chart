@@ -207,7 +207,21 @@
       inBtn.style.background = accentColor; inBtn.style.color = '#fff';
       cmBtn.style.background = 'transparent'; cmBtn.style.color = '#555';
     }
-    if (chartData) rebuildTable();
+    if (chartData) {
+      rebuildTable();
+      updateInputLabels();
+    }
+  }
+
+  function updateInputLabels() {
+    if (!chartData) return;
+    var unitLabel = currentUnit === 'cm' ? 'cm' : 'in';
+    (chartData.columns || []).filter(function(c) { return c.customerInputEnabled; }).forEach(function(col) {
+      var input = document.getElementById('sc-input-' + blockId + '-' + col.id);
+      if (input) input.placeholder = getColPlaceholder(col);
+      var lbl = document.querySelector('label[for="sc-input-' + blockId + '-' + col.id + '"]');
+      if (lbl) lbl.textContent = (col.inputLabel || col.name) + ' (' + unitLabel + ')';
+    });
   }
 
   cmBtn.addEventListener('click', function() { setUnit('cm'); });
