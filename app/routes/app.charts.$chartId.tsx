@@ -123,8 +123,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const customerInputEnabled = form.get("customerInputEnabled") === "true";
     const inputLabel = (form.get("inputLabel") as string)?.trim() || null;
     const apparelMeasurementType = (form.get("apparelMeasurementType") as string)?.trim() || null;
+    const columnType = (form.get("columnType") as string) || undefined;
     const updateData: any = { isMatchingKey, customerInputEnabled, inputLabel, apparelMeasurementType };
     if (name) updateData.name = name;
+    if (columnType) updateData.columnType = columnType;
     await prisma.sizeChartColumn.update({ where: { id: columnId }, data: updateData });
     const chart = await getChart();
     return { success: "Column updated", chart };
@@ -561,6 +563,13 @@ function ColumnCard({ col, submit, busy, onDelete }: any) {
           <input type="hidden" name="intent" value="update-column" />
           <input type="hidden" name="columnId" value={col.id} />
           <div style={fieldGrid}>
+            <div>
+              <label style={labelStyle}>Column type</label>
+              <select name="columnType" defaultValue={col.columnType} style={selectStyle}>
+                <option value="size_label">Size label (XS, S, M…)</option>
+                <option value="measurement">Measurement (number, converts cm/in)</option>
+              </select>
+            </div>
             <div>
               <label style={labelStyle}>Customer input</label>
               <select name="customerInputEnabled" defaultValue={col.customerInputEnabled ? "true" : "false"} style={selectStyle}>
