@@ -80,6 +80,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return Response.json({ shopQueried: shop, shopsInDB: shopList.map(s => s.shop), allMappings, allFallbacks, receivedTags: tagsParam, receivedVendor: vendor, receivedProductType: productType }, { headers: CORS });
   }
 
+  // ── One-time shop migration ───────────────────────────────────────────────
+  // Usage: /api/size-chart?migrate=1&from=OLD.myshopify.com&to=NEW.myshopify.com
+  if (url.searchParams.get("migrate") === "1") {
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
+    if (!from || !to) return Response.json({ error: "Missing from/to" }, { headers: CORS });
+    const [charts, mappings, fallbacks, settings] = await Promise.all([
+      prisma.sizeChart.updateMany({ where: { shop: from }, data: { shop: to } }),
+      prisma.productMapping.updateMany({ where: { shop: from }, data: { shop: to } }),
+      prisma.fallbackMapping.updateMany({ where: { shop: from }, data: { shop: to } }),
+      prisma.globalSettings.updateMany({ where: { shop: from }, data: { shop: to } }),
+    ]);
+    return Response.json({ migrated: { charts: charts.count, mappings: mappings.count, fallbacks: fallbacks.count, settings: settings.count } }, { headers: CORS });
+  }
+
   // ── Cache lookup ──────────────────────────────────────────────────────────
   const cacheKey = getCacheKey(shop, productIdParam, productHandle, tagsParam, vendor, productType);
   const cached = cache.get(cacheKey);
