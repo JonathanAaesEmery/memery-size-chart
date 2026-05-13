@@ -19,7 +19,7 @@
         border: none;
         border-radius: 4px;
         padding: 10px 20px;
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 600;
       {% elsif btn_style == 'outline' %}
         background: transparent;
@@ -27,13 +27,13 @@
         border: 2px solid {{ accent }};
         border-radius: 4px;
         padding: 9px 20px;
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 600;
       {% else %}
         background: none;
         border: none;
         padding: 0;
-        font-size: 14px;
+        font-size: 15px;
         text-decoration: underline;
         text-underline-offset: 3px;
         color: {{ accent }};
@@ -45,7 +45,7 @@
       font-family: inherit;
     "
   >
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21.3 8.7 8.7 21.3c-.6.6-1.5.6-2.1 0L3.7 18.4c-.6-.6-.6-1.5 0-2.1L16.3 3.7c.6-.6 1.5-.6 2.1 0l2.9 2.9c.6.6.6 1.5 0 2.1z"/>
       <path d="m7.5 10.5 2 2M10.5 7.5l2 2M13.5 4.5l2 2M4.5 13.5l2 2"/>
     </svg>
@@ -176,6 +176,7 @@
       btn.style.borderRadius = '4px';
       btn.style.padding = '10px 20px';
       btn.style.fontWeight = '600';
+      btn.style.fontSize = '15px';
     } else if (style === 'outline') {
       btn.style.background = 'transparent';
       btn.style.color = color;
@@ -183,11 +184,13 @@
       btn.style.borderRadius = '4px';
       btn.style.padding = '9px 20px';
       btn.style.fontWeight = '600';
+      btn.style.fontSize = '15px';
     } else {
       btn.style.background = 'none';
       btn.style.color = color;
       btn.style.textDecoration = 'underline';
       btn.style.textUnderlineOffset = '3px';
+      btn.style.fontSize = '15px';
     }
   }
 
