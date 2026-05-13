@@ -70,6 +70,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return Response.json({ error: "Missing shop parameter" }, { status: 400, headers: CORS });
   }
 
+  // ── Debug mode ────────────────────────────────────────────────────────────
+  if (url.searchParams.get("debug") === "1") {
+    const [allMappings, allFallbacks] = await Promise.all([
+      prisma.productMapping.findMany({ where: { shop }, select: { productHandle: true, productId: true, chartId: true } }),
+      prisma.fallbackMapping.findMany({ where: { shop }, select: { mappingType: true, mappingValue: true, chartId: true } }),
+    ]);
+    return Response.json({ shop, allMappings, allFallbacks, receivedTags: tagsParam, receivedVendor: vendor, receivedProductType: productType }, { headers: CORS });
+  }
+
   // ── Cache lookup ──────────────────────────────────────────────────────────
   const cacheKey = getCacheKey(shop, productIdParam, productHandle, tagsParam, vendor, productType);
   const cached = cache.get(cacheKey);
