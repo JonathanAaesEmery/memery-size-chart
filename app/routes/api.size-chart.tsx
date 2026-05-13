@@ -146,6 +146,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (productType) candidates.push({ type: "product_type", value: decodeURIComponent(productType) });
 
     if (candidates.length > 0) {
+      console.log(`[size-chart] shop=${shop} searching fallbacks, candidates=`, JSON.stringify(candidates));
       const fallback = await prisma.fallbackMapping.findFirst({
         where: {
           shop,
@@ -157,11 +158,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
         include: { chart: true },
         orderBy: { priority: "desc" },
       });
+      console.log(`[size-chart] fallback found=`, fallback ? `chartId=${fallback.chartId} type=${fallback.mappingType} value=${fallback.mappingValue}` : "none");
       if (fallback) mapping = fallback;
     }
   }
 
-  if (!mapping || !mapping.chart.isActive) {
+  if (!mapping) {
+    console.log(`[size-chart] shop=${shop} no mapping found for product=${productId || productHandle}`);
+    return Response.json({ chart: null }, { headers: CORS });
+  }
+
+  if (!mapping.chart.isActive) {
+    console.log(`[size-chart] shop=${shop} chart ${mapping.chartId} is INACTIVE`);
     return Response.json({ chart: null }, { headers: CORS });
   }
 

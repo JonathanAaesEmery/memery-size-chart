@@ -116,7 +116,7 @@
   var shop = '{{ shop.permanent_domain }}';
   var productHandle = '{{ product.handle }}';
   var productId = '{{ product.id }}';
-  var productTags = '{{ product.tags }}';
+  var productTagsArray = {{ product.tags | json }};
   var vendor = encodeURIComponent('{{ product.vendor }}');
   var productType = encodeURIComponent('{{ product.type }}');
   var accentColor = '{{ accent }}';
@@ -225,7 +225,8 @@
 
   // ── Load ───────────────────────────────────────────────────────
   function loadChart() {
-    var tagsEncoded = productTags.split(',').map(function(t) { return encodeURIComponent(t.trim()); }).join(',');
+    var tags = Array.isArray(productTagsArray) ? productTagsArray : [];
+    var tagsEncoded = tags.map(function(t) { return encodeURIComponent(String(t).trim()); }).filter(Boolean).join(',');
     var url = appUrl + '/api/size-chart?shop=' + shop
       + '&product_handle=' + encodeURIComponent(productHandle)
       + '&product_id=' + encodeURIComponent(productId)
@@ -233,9 +234,13 @@
       + '&vendor=' + vendor
       + '&product_type=' + productType;
 
+    console.log('[Size Chart] Fetching:', url);
+    console.log('[Size Chart] Tags:', tags);
+
     fetch(url)
       .then(function(r) { return r.json(); })
       .then(function(data) {
+        console.log('[Size Chart] Response:', data);
         if (!data.chart) { btn.style.display = 'none'; return; }
         chartData = data.chart;
         if (chartData.title) titleEl.textContent = chartData.title;
