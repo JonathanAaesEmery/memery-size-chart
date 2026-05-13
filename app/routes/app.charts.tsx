@@ -270,7 +270,19 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
     }
   }, [editorFetcher.state]); // eslint-disable-line
 
-  const saveDetails = () => {
+  const detailsTimeoutRef = React.useRef<NodeJS.Timeout>();
+
+  const autoSaveDetails = () => {
+    if (!detailsRef.current || isNew) return;
+    clearTimeout(detailsTimeoutRef.current);
+    detailsTimeoutRef.current = setTimeout(() => {
+      const fd = new FormData(detailsRef.current!);
+      fd.set("returnJson", "true");
+      editorFetcher.submit(fd, { method: "post", action: actionUrl });
+    }, 1500);
+  };
+
+  const createChart = () => {
     if (!detailsRef.current) return;
     const fd = new FormData(detailsRef.current);
     fd.set("returnJson", "true");
@@ -287,10 +299,10 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
         <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", color: "#6d7175", fontSize: 13, padding: 0 }}>Size Charts</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 3fr", gap: "12px", alignItems: "start", paddingBottom: 40, width: "100vw", marginLeft: "calc(-50vw + 50%)", paddingLeft: 16, paddingRight: 16 }}>
+      <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", paddingBottom: 40, width: "100vw", marginLeft: "calc(-50vw + 50%)", paddingLeft: 16, paddingRight: 16 }}>
 
-        {/* ── LEFT ── */}
-        <div>
+        {/* ── LEFT (75%) - Editor ── */}
+        <div style={{ flex: "0 0 75%", minWidth: 0 }}>
           {editorFetcher.data && "error" in editorFetcher.data && <div style={bannerStyle("error")}>{editorFetcher.data.error}</div>}
           {editorFetcher.data && "success" in editorFetcher.data && <div style={bannerStyle("success")}>{editorFetcher.data.success}</div>}
 
@@ -301,29 +313,31 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div style={{ flex: 3, minWidth: 160 }}>
                   <label style={lbl}>Chart title *</label>
-                  <input name="title" defaultValue={chart?.title || ""} required style={inp} placeholder="e.g. Women's Knitwear" />
+                  <input name="title" defaultValue={chart?.title || ""} required style={inp} placeholder="e.g. Women's Knitwear" onChange={autoSaveDetails} />
                 </div>
                 <div style={{ flex: 1, minWidth: 140 }}>
                   <label style={lbl}>Type</label>
-                  <select name="chartType" defaultValue={chart?.chartType || "simple"} style={sel}>
+                  <select name="chartType" defaultValue={chart?.chartType || "simple"} style={sel} onChange={autoSaveDetails}>
                     {CHART_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div style={{ minWidth: 80 }}>
                   <label style={lbl}>Unit</label>
-                  <select name="defaultUnit" defaultValue={chart?.defaultUnit || "cm"} style={sel}>
+                  <select name="defaultUnit" defaultValue={chart?.defaultUnit || "cm"} style={sel} onChange={autoSaveDetails}>
                     <option value="cm">cm</option>
                     <option value="inch">inch</option>
                   </select>
                 </div>
-                <button type="button" disabled={busy} onClick={saveDetails} style={btnPrimary}>
-                  {isNew ? "Create →" : "Save"}
-                </button>
+                {isNew && (
+                  <button type="button" disabled={busy} onClick={createChart} style={btnPrimary}>
+                    Create →
+                  </button>
+                )}
               </div>
               <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 200 }}>
                   <label style={lbl}>Description <span style={{ fontWeight: 400, color: "#888" }}>(shown above the table)</span></label>
-                  <input name="description" defaultValue={chart?.description || ""} style={inp} placeholder="e.g. Size guide for knitwear" />
+                  <input name="description" defaultValue={chart?.description || ""} style={inp} placeholder="e.g. Size guide for knitwear" onChange={autoSaveDetails} />
                 </div>
               </div>
               <input type="hidden" name="instructionsHtml" value={chart?.instructionsHtml || ""} />
@@ -342,10 +356,12 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
           )}
         </div>
 
-        {/* ── RIGHT: Preview ── */}
-        <div style={{ position: "sticky", top: 20 }}>
+        {/* ── RIGHT (25%): Preview ── */}
+        <div style={{ flex: "0 0 25%", minWidth: 0, display: "flex", flexDirection: "column", height: "calc(100vh - 100px)", position: "sticky", top: 16 }}>
           <p style={{ fontSize: 10, fontWeight: 700, color: "#aaa", letterSpacing: "0.1em", margin: "0 0 6px", textTransform: "uppercase" }}>Customer preview</p>
-          <ChartPreview chart={chart} />
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            <ChartPreview chart={chart} />
+          </div>
         </div>
       </div>
     </s-page>
@@ -362,6 +378,7 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
   const [newColName, setNewColName] = React.useState("");
   const [newColMatching, setNewColMatching] = React.useState(false);
   const tableRef = React.useRef<HTMLTableElement>(null);
+  const cellsTimeoutRef = React.useRef<NodeJS.Timeout>();
 
   const cols: any[] = chart?.columns || [];
   const rows: any[] = chart?.rows || [];
@@ -401,16 +418,19 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
     if (confirm("Remove this row?")) sub({ intent: "delete-row", rowId });
   };
 
-  // ── Save all cells ──
+  // ── Auto-save all cells ──
 
-  const saveCells = () => {
-    if (!tableRef.current) return;
-    const fd = new FormData();
-    fd.set("intent", "save-cells");
-    tableRef.current.querySelectorAll<HTMLInputElement>("input[data-c]").forEach(el => {
-      fd.set(el.name, el.value);
-    });
-    editorFetcher.submit(fd, { method: "post", action: actionUrl });
+  const autoSaveCells = () => {
+    clearTimeout(cellsTimeoutRef.current);
+    cellsTimeoutRef.current = setTimeout(() => {
+      if (!tableRef.current) return;
+      const fd = new FormData();
+      fd.set("intent", "save-cells");
+      tableRef.current.querySelectorAll<HTMLInputElement>("input[data-c]").forEach(el => {
+        fd.set(el.name, el.value);
+      });
+      editorFetcher.submit(fd, { method: "post", action: actionUrl });
+    }, 1500);
   };
 
   // ── Cell focus highlight (direct DOM, avoids resetting uncontrolled inputs) ──
@@ -538,15 +558,16 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
                         placeholder="—"
                         onFocus={focusCell}
                         onBlur={blurCell}
+                        onChange={autoSaveCells}
                         style={{ width: "100%", border: "none", padding: "8px 10px", fontSize: 13, background: "transparent", outline: "none", boxSizing: "border-box", display: "block" } as React.CSSProperties}
                       />
                       {col.customerInputEnabled && (
                         <div style={{ display: "flex", gap: 4, padding: "0 8px 7px" }}>
                           <input data-c="1" name={`min-${row.id}-${col.id}`} defaultValue={cell?.minValue ?? ""} type="number" step="0.1" placeholder="min"
-                            onFocus={focusCell} onBlur={blurCell}
+                            onFocus={focusCell} onBlur={blurCell} onChange={autoSaveCells}
                             style={{ width: "50%", border: "1px solid #ddd8ff", borderRadius: 4, fontSize: 11, padding: "3px 6px", color: "#7c3aed", background: "#faf7ff", outline: "none" } as React.CSSProperties} />
                           <input data-c="1" name={`max-${row.id}-${col.id}`} defaultValue={cell?.maxValue ?? ""} type="number" step="0.1" placeholder="max"
-                            onFocus={focusCell} onBlur={blurCell}
+                            onFocus={focusCell} onBlur={blurCell} onChange={autoSaveCells}
                             style={{ width: "50%", border: "1px solid #ddd8ff", borderRadius: 4, fontSize: 11, padding: "3px 6px", color: "#7c3aed", background: "#faf7ff", outline: "none" } as React.CSSProperties} />
                         </div>
                       )}
@@ -577,9 +598,6 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
         {hasMatchingCols
           ? <span style={{ fontSize: 11, color: "#999" }}><span style={{ color: "#7c3aed" }}>📏</span> Matching columns: display value shown to customer + min/max range for size recommendation</span>
           : <span style={{ fontSize: 11, color: "#bbb" }}>Click a column name to rename · toggle "Label / 📏 Matching" to enable size recommendation</span>}
-        {rows.length > 0 && cols.length > 0 && (
-          <button type="button" onClick={saveCells} style={{ ...btnPrimary, flexShrink: 0 }}>Save table</button>
-        )}
       </div>
     </div>
   );
@@ -631,7 +649,7 @@ function ChartPreview({ chart }: { chart: any }) {
         </div>
       </div>
 
-      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10, maxHeight: 500, overflowY: "auto" }}>
+      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
         {!hasContent ? (
           <div style={{ textAlign: "center", padding: "28px 0" }}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>📐</div>
@@ -639,68 +657,85 @@ function ChartPreview({ chart }: { chart: any }) {
           </div>
         ) : (
           <>
-            {inputCols.length > 0 && (
-              <div style={{ background: "#fff", borderRadius: 8, padding: "12px 14px" }}>
-                <p style={{ margin: "0 0 3px", fontWeight: 600, fontSize: 13 }}>📏 Enter your measurements</p>
-                <p style={{ margin: "0 0 10px", fontSize: 11, color: "#6d7175" }}>Find your perfect size.</p>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {inputCols.map((col: any) => (
-                    <div key={col.id}>
-                      <label style={{ display: "block", fontSize: 11, fontWeight: 600, marginBottom: 3 }}>
-                        {col.inputLabel || col.name} <span style={{ fontWeight: 400, color: "#888" }}>({unit})</span>
-                      </label>
-                      <input type="number" placeholder="e.g. 92" value={vals[col.id] || ""}
-                        onChange={e => setVals(v => ({ ...v, [col.id]: e.target.value }))}
-                        style={{ width: "100%", padding: "6px 8px", border: "1px solid #c9cccf", borderRadius: 5, fontSize: 12, boxSizing: "border-box" } as React.CSSProperties} />
+            <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", border: "1px solid #e1e3e5" }}>
+              {/* Input section */}
+              {inputCols.length > 0 && (
+                <div style={{ padding: "12px 14px", borderBottom: "1px solid #e1e3e5" }}>
+                  <p style={{ margin: "0 0 3px", fontWeight: 600, fontSize: 13 }}>📏 Enter your measurements</p>
+                  <p style={{ margin: "0 0 10px", fontSize: 11, color: "#6d7175" }}>Find your perfect size.</p>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {inputCols.map((col: any) => (
+                      <div key={col.id}>
+                        <label style={{ display: "block", fontSize: 11, fontWeight: 600, marginBottom: 3 }}>
+                          {col.inputLabel || col.name} <span style={{ fontWeight: 400, color: "#888" }}>({unit})</span>
+                        </label>
+                        <input type="number" placeholder="e.g. 92" value={vals[col.id] || ""}
+                          onChange={e => setVals(v => ({ ...v, [col.id]: e.target.value }))}
+                          style={{ width: "100%", padding: "6px 8px", border: "1px solid #c9cccf", borderRadius: 5, fontSize: 12, boxSizing: "border-box" } as React.CSSProperties} />
+                      </div>
+                    ))}
+                  </div>
+                  {matchedRowId && <div style={{ marginTop: 9, padding: "6px 10px", background: "#e8f4ff", borderRadius: 6, fontSize: 12, color: "#1a5fa8", fontWeight: 500 }}>✓ Your recommended size is highlighted below</div>}
+                </div>
+              )}
+
+              {/* Table section */}
+              {chart?.columns?.length > 0 && (
+                <div style={{ overflow: "auto" }}>
+                  <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: "#1a1a1a" }}>
+                        {chart.columns.map((col: any) => (
+                          <th key={col.id} style={{ padding: "9px 11px", color: "#fff", fontWeight: 700, textAlign: "left", whiteSpace: "nowrap", fontSize: 10, letterSpacing: "0.07em" }}>
+                            {col.name.toUpperCase()}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {!chart?.rows?.length
+                        ? <tr><td colSpan={chart.columns.length} style={{ padding: "14px", color: "#ccc", textAlign: "center" }}>No rows yet</td></tr>
+                        : chart.rows.map((row: any, ri: number) => {
+                            const isMatch = row.id === matchedRowId;
+                            return (
+                              <tr key={row.id} style={{ background: isMatch ? "#dbeeff" : ri % 2 === 0 ? "#fff" : "#fafafa" }}>
+                                {chart.columns.map((col: any, ci: number) => {
+                                  const cell = row.cells?.find((c: any) => c.columnId === col.id);
+                                  return (
+                                    <td key={col.id} style={{ padding: "9px 11px", borderBottom: "1px solid #f0f0f0", fontWeight: ci === 0 ? 700 : 400, color: isMatch && ci === 0 ? "#1a5fa8" : "#1a1a1a" }}>
+                                      {cell?.value || "—"}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            );
+                          })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {!chart?.columns?.length && <p style={{ padding: "14px", color: "#ccc", fontSize: 12, textAlign: "center" }}>Add columns to see the table</p>}
+
+              {/* Images section */}
+              {chart?.images && chart.images.length > 0 && (
+                <div style={{ padding: "12px 14px", borderTop: "1px solid #e1e3e5", display: "flex", flexDirection: "column", gap: 10 }}>
+                  {chart.images.map((img: any) => (
+                    <div key={img.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                      <img src={img.url} alt={img.altText} style={{ maxWidth: "100%", maxHeight: 300, objectFit: "contain", borderRadius: 6 }} />
+                      {img.altText && <p style={{ margin: 0, fontSize: 11, color: "#888", textAlign: "center" }}>{img.altText}</p>}
                     </div>
                   ))}
                 </div>
-                {matchedRowId && <div style={{ marginTop: 9, padding: "6px 10px", background: "#e8f4ff", borderRadius: 6, fontSize: 12, color: "#1a5fa8", fontWeight: 500 }}>✓ Your recommended size is highlighted below</div>}
-              </div>
-            )}
+              )}
 
-            {chart?.columns?.length > 0 && (
-              <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden" }}>
-                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: "#1a1a1a" }}>
-                      {chart.columns.map((col: any) => (
-                        <th key={col.id} style={{ padding: "9px 11px", color: "#fff", fontWeight: 700, textAlign: "left", whiteSpace: "nowrap", fontSize: 10, letterSpacing: "0.07em" }}>
-                          {col.name.toUpperCase()}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {!chart?.rows?.length
-                      ? <tr><td colSpan={chart.columns.length} style={{ padding: "14px", color: "#ccc", textAlign: "center" }}>No rows yet</td></tr>
-                      : chart.rows.map((row: any, ri: number) => {
-                          const isMatch = row.id === matchedRowId;
-                          return (
-                            <tr key={row.id} style={{ background: isMatch ? "#dbeeff" : ri % 2 === 0 ? "#fff" : "#fafafa" }}>
-                              {chart.columns.map((col: any, ci: number) => {
-                                const cell = row.cells?.find((c: any) => c.columnId === col.id);
-                                return (
-                                  <td key={col.id} style={{ padding: "9px 11px", borderBottom: "1px solid #f0f0f0", fontWeight: ci === 0 ? 700 : 400, color: isMatch && ci === 0 ? "#1a5fa8" : "#1a1a1a" }}>
-                                    {cell?.value || "—"}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {!chart?.columns?.length && <p style={{ color: "#ccc", fontSize: 12, textAlign: "center" }}>Add columns to see the table</p>}
-
-            {chart?.instructionsHtml && (
-              <div style={{ background: "#fff", borderRadius: 8, padding: "12px 14px" }}>
-                <div style={{ fontSize: 12, color: "#3d3d3d", lineHeight: 1.65 }} dangerouslySetInnerHTML={{ __html: chart.instructionsHtml }} />
-              </div>
-            )}
+              {/* Instructions section */}
+              {chart?.instructionsHtml && (
+                <div style={{ padding: "12px 14px", borderTop: "1px solid #e1e3e5" }}>
+                  <div style={{ fontSize: 12, color: "#3d3d3d", lineHeight: 1.65 }} dangerouslySetInnerHTML={{ __html: chart.instructionsHtml }} />
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -887,9 +922,14 @@ function ImagesSection({ chart, actionUrl, editorFetcher }: { chart: any; action
     }
   };
 
-  const saveInstructions = () => {
-    sub({ intent: "save-details", title: chart.title, description: chart.description || "", chartType: chart.chartType, defaultUnit: chart.defaultUnit, instructionsHtml: instructionsText });
-    setSavedInstructions(instructionsText);
+  const instructionsTimeoutRef = React.useRef<NodeJS.Timeout>();
+
+  const autoSaveInstructions = () => {
+    clearTimeout(instructionsTimeoutRef.current);
+    instructionsTimeoutRef.current = setTimeout(() => {
+      sub({ intent: "save-details", title: chart.title, description: chart.description || "", chartType: chart.chartType, defaultUnit: chart.defaultUnit, instructionsHtml: instructionsText });
+      setSavedInstructions(instructionsText);
+    }, 1500);
   };
 
   return (
@@ -964,10 +1004,13 @@ function ImagesSection({ chart, actionUrl, editorFetcher }: { chart: any; action
 
         {showInstructions && (
           <div style={{ padding: "12px 14px", borderTop: "1px solid #e1e3e5", display: "flex", flexDirection: "column", gap: 8 }}>
-            <RichTextEditor value={instructionsText} onChange={setInstructionsText} />
-            {instructionsText !== savedInstructions && (
-              <button type="button" onClick={saveInstructions} style={btnPrimary}>Save instructions</button>
-            )}
+            <RichTextEditor
+              value={instructionsText}
+              onChange={(text) => {
+                setInstructionsText(text);
+                autoSaveInstructions();
+              }}
+            />
           </div>
         )}
       </div>

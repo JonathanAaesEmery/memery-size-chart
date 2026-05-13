@@ -69,7 +69,7 @@
         <strong id="size-chart-title-{{ block.id }}" style="font-size: 16px;">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
         <div style="display: flex; align-items: center; gap: 12px;">
           <!-- CM/IN toggle -->
-          <div id="size-chart-unit-toggle-{{ block.id }}" style="display:none; background:#f1f1f1; border-radius:20px; padding:2px; display:none; align-items:center;">
+          <div id="size-chart-unit-toggle-{{ block.id }}" style="display:none; background:#f1f1f1; border-radius:20px; padding:2px; align-items:center;">
             <button id="size-chart-cm-btn-{{ block.id }}" type="button" style="border:none;cursor:pointer;border-radius:18px;padding:4px 12px;font-size:12px;font-weight:600;background:#000;color:#fff;transition:all 0.15s;">cm</button>
             <button id="size-chart-in-btn-{{ block.id }}" type="button" style="border:none;cursor:pointer;border-radius:18px;padding:4px 12px;font-size:12px;font-weight:600;background:transparent;color:#555;transition:all 0.15s;">in</button>
           </div>
@@ -101,6 +101,8 @@
   var vendor = encodeURIComponent('{{ product.vendor }}');
   var productType = encodeURIComponent('{{ product.type }}');
 
+  console.log('[Size Chart Block] blockId:', blockId, 'appUrl:', appUrl, 'shop:', shop, 'productHandle:', productHandle);
+
   var btn = document.getElementById('size-chart-btn-' + blockId);
   var modal = document.getElementById('size-chart-modal-' + blockId);
   var closeBtn = document.getElementById('size-chart-close-' + blockId);
@@ -110,7 +112,18 @@
   var inBtn = document.getElementById('size-chart-in-btn-' + blockId);
   var titleEl = document.getElementById('size-chart-title-' + blockId);
 
-  if (!appUrl) { btn.style.display = 'none'; return; }
+  if (!btn) {
+    console.log('[Size Chart Block] ERROR: Button element not found!');
+    return;
+  }
+
+  if (!appUrl) {
+    console.log('[Size Chart Block] ERROR: appUrl is missing or empty!');
+    btn.style.display = 'none';
+    return;
+  }
+
+  console.log('[Size Chart Block] Initialized successfully');
 
   var loaded = false;
   var currentUnit = 'cm';

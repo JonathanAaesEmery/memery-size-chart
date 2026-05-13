@@ -215,6 +215,108 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return { success: "Image deleted", chart };
   }
 
+  if (intent === "duplicate-chart") {
+    if (chartId === "new") return { error: "Cannot duplicate a new chart" };
+
+    try {
+      const original = await prisma.sizeChart.findFirst({
+        where: { id: chartId, shop: session.shop },
+        include: {
+          columns: { orderBy: { displayOrder: "asc" } },
+          rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
+          images: { orderBy: { displayOrder: "asc" } },
+        },
+      });
+
+      if (!original) return { error: "Chart not found" };
+
+      // Create the duplicate chart in a transaction to ensure atomicity
+      const duplicate = await prisma.$transaction(async (tx) => {
+        // Create the new chart with same properties
+        const newChart = await tx.sizeChart.create({
+          data: {
+            shop: session.shop,
+            title: `${original.title} - Copy`,
+            description: original.description,
+            chartType: original.chartType,
+            defaultUnit: original.defaultUnit,
+            imageLayout: original.imageLayout,
+            instructionsHtml: original.instructionsHtml,
+            isActive: original.isActive,
+          },
+        });
+
+        // Create new columns, mapping old columnId to new columnId
+        const columnMap = new Map<string, string>();
+        for (const col of original.columns) {
+          const newCol = await tx.sizeChartColumn.create({
+            data: {
+              chartId: newChart.id,
+              name: col.name,
+              columnType: col.columnType,
+              displayOrder: col.displayOrder,
+              isMatchingKey: col.isMatchingKey,
+              customerInputEnabled: col.customerInputEnabled,
+              apparelMeasurementType: col.apparelMeasurementType,
+              inputLabel: col.inputLabel,
+            },
+          });
+          columnMap.set(col.id, newCol.id);
+        }
+
+        // Create new rows, mapping old rowId to new rowId
+        const rowMap = new Map<string, string>();
+        for (const row of original.rows) {
+          const newRow = await tx.sizeChartRow.create({
+            data: {
+              chartId: newChart.id,
+              displayOrder: row.displayOrder,
+            },
+          });
+          rowMap.set(row.id, newRow.id);
+        }
+
+        // Create new cells, linking to new rows and columns
+        for (const row of original.rows) {
+          const newRowId = rowMap.get(row.id)!;
+          for (const cell of row.cells) {
+            const newColId = columnMap.get(cell.columnId)!;
+            await tx.sizeChartCell.create({
+              data: {
+                rowId: newRowId,
+                columnId: newColId,
+                value: cell.value,
+                minValue: cell.minValue,
+                maxValue: cell.maxValue,
+              },
+            });
+          }
+        }
+
+        // Create new images
+        for (const img of original.images) {
+          await tx.sizeChartImage.create({
+            data: {
+              chartId: newChart.id,
+              url: img.url,
+              altText: img.altText,
+              displayOrder: img.displayOrder,
+            },
+          });
+        }
+
+        return newChart;
+      });
+
+      const elapsed = Date.now() - actionStart;
+      console.log(`[ACTION] duplicate-chart completed in ${elapsed}ms - original: ${chartId}, new: ${duplicate.id}`);
+      return { newChartId: duplicate.id };
+    } catch (err) {
+      console.error(`[ACTION] duplicate-chart error:`, err);
+      return { error: `Failed to duplicate chart: ${err instanceof Error ? err.message : "Unknown error"}` };
+    }
+  }
+
   const elapsed = Date.now() - actionStart;
   console.log(`[ACTION] ${intent} completed in ${elapsed}ms`);
   return null;
@@ -271,6 +373,14 @@ export default function ChartEditor() {
     navigate(path);
   };
 
+  // Handle navigation after duplication
+  React.useEffect(() => {
+    if (actionData?.newChartId) {
+      const newPath = `/app/charts/${actionData.newChartId}${qs ? `?${qs}` : ""}`;
+      navigate(newPath);
+    }
+  }, [actionData?.newChartId, qs, navigate]);
+
   return (
     <s-page heading={isNew ? "New size chart" : chart.title}>
       <div slot="breadcrumbs">
@@ -320,10 +430,15 @@ export default function ChartEditor() {
               <textarea name="instructionsHtml" defaultValue={chart?.instructionsHtml || ""} rows={3} style={{ ...inputStyle, resize: "vertical", fontFamily: "monospace", fontSize: 12 }} placeholder="<p>How to measure yourself…</p>" />
             </div>
           </div>
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
             <button onClick={() => detailsRef.current && submit(new FormData(detailsRef.current), { method: "post" })} style={btnPrimary}>
               {isNew ? "Create chart" : "Save details"}
             </button>
+            {!isNew && (
+              <button onClick={() => submit({ intent: "duplicate-chart" }, { method: "post" })} style={btnSecondary}>
+                Duplicate
+              </button>
+            )}
           </div>
         </form>
       </div>
