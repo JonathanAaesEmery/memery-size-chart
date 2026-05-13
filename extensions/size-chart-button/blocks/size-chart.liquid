@@ -2,7 +2,8 @@
   Size Chart Button — modal med CM/IN toggle, måle-input og recommendation engine
 {% endcomment %}
 
-{% assign app_url = app.url %}
+{% assign app_url = app.url | default: "https://memery-size-chart-production.up.railway.app" %}
+{% if app_url == blank %}{% assign app_url = "https://memery-size-chart-production.up.railway.app" %}{% endif %}
 
 <div id="size-chart-wrapper-{{ block.id }}" style="margin: 8px 0;">
   <button
@@ -23,8 +24,9 @@
       font-family: inherit;
     "
   >
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M2 12h20M2 6h20M2 18h20M7 3v3M12 3v3M17 3v3M7 18v3M12 18v3M17 18v3"/>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21.3 8.7 8.7 21.3c-.6.6-1.5.6-2.1 0L3.7 18.4c-.6-.6-.6-1.5 0-2.1L16.3 3.7c.6-.6 1.5-.6 2.1 0l2.9 2.9c.6.6.6 1.5 0 2.1z"/>
+      <path d="m7.5 10.5 2 2M10.5 7.5l2 2M13.5 4.5l2 2M4.5 13.5l2 2"/>
     </svg>
     {{ block.settings.button_text | default: 'Size Guide' }}
   </button>
@@ -38,33 +40,29 @@
       inset: 0;
       background: rgba(0,0,0,0.5);
       z-index: 9999;
-      align-items: flex-start;
+      align-items: center;
       justify-content: center;
-      padding: 16px;
-      overflow-y: auto;
     "
   >
     <div style="
       background: #fff;
       border-radius: 8px;
-      width: 100%;
+      width: calc(100% - 32px);
       max-width: 680px;
-      margin: auto;
+      max-height: 90vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
     ">
-      <!-- Modal header -->
+      <!-- Modal header — fast, scroller ikke med -->
       <div style="
+        flex-shrink: 0;
         display: flex;
         justify-content: space-between;
         align-items: center;
         padding: 16px 20px;
         border-bottom: 1px solid #e1e3e5;
-        position: sticky;
-        top: 0;
         background: #fff;
-        z-index: 1;
       ">
         <strong id="size-chart-title-{{ block.id }}" style="font-size: 16px;">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
         <div style="display: flex; align-items: center; gap: 12px;">
@@ -82,8 +80,8 @@
         </div>
       </div>
 
-      <!-- Modal body -->
-      <div id="size-chart-body-{{ block.id }}" style="overflow-y: auto; padding: 20px; flex: 1;">
+      <!-- Modal body — scroller indeni -->
+      <div id="size-chart-body-{{ block.id }}" style="overflow-y: auto; padding: 20px; flex: 1; min-height: 0;">
         <p style="color:#6d7175;font-size:14px;">Loader...</p>
       </div>
     </div>
@@ -164,8 +162,6 @@
 
   // ── Load ───────────────────────────────────────────────────────
   function loadChart() {
-    if (loaded) return;
-    loaded = true;
     var tagsEncoded = productTags.split(',').map(function(t) { return encodeURIComponent(t.trim()); }).join(',');
     var url = appUrl + '/api/size-chart?shop=' + shop
       + '&product_handle=' + encodeURIComponent(productHandle)
@@ -185,18 +181,29 @@
         if (hasMeasurements) {
           unitToggle.style.display = 'flex';
         }
-
-        renderAll();
       })
       .catch(function(err) {
-        body.innerHTML = '<p style="color:#d72c0d;font-size:14px;">Kunne ikke loade størrelsesguide (' + err.message + ')</p>';
+        console.log('[Size Chart Block] Preload failed:', err.message);
       });
+  }
+
+  // ── Images builder ────────────────────────────────────────────
+  function buildImages(images) {
+    if (!images || images.length === 0) return '';
+    var html = '<div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">';
+    images.forEach(function(img) {
+      html += '<img src="' + esc(img.url) + '" alt="' + esc(img.altText || '') + '" style="max-width:220px;width:100%;border-radius:6px;display:block;" />';
+    });
+    html += '</div>';
+    return html;
   }
 
   // ── Main render ────────────────────────────────────────────────
   function renderAll() {
     var chart = chartData;
     var html = '';
+    var images = chart.images || [];
+    var imageLayout = chart.imageLayout || 'above';
 
     if (chart.description) {
       html += '<p style="margin:0 0 16px;color:#6d7175;font-size:14px;">' + esc(chart.description) + '</p>';
@@ -215,6 +222,9 @@
     if (chart.columns && chart.columns.length > 0 && chart.rows && chart.rows.length > 0) {
       html += buildTable(chart, null);
     }
+
+    // Images always below table
+    html += buildImages(images);
 
     if (chart.instructionsHtml) {
       html += '<div style="margin-top:20px;font-size:13px;color:#6d7175;line-height:1.6;">' + chart.instructionsHtml + '</div>';
@@ -241,18 +251,18 @@
   function buildInputSection(inputCols, chartType) {
     var unitLabel = currentUnit === 'cm' ? 'cm' : 'in';
     var html = '<div style="background:#f9f9f9;border:1px solid #e1e3e5;border-radius:8px;padding:16px;margin-bottom:20px;">';
-    html += '<p style="margin:0 0 12px;font-weight:600;font-size:14px;">Find din størrelse</p>';
+    html += '<p style="margin:0 0 12px;font-weight:600;font-size:14px;">Find your size</p>';
     html += '<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">';
 
     inputCols.forEach(function(col) {
       var label = col.inputLabel || col.name;
       html += '<div style="display:flex;flex-direction:column;gap:4px;min-width:120px;">';
       html += '<label style="font-size:12px;color:#6d7175;" for="sc-input-' + blockId + '-' + col.id + '">' + esc(label) + ' (' + unitLabel + ')</label>';
-      html += '<input id="sc-input-' + blockId + '-' + col.id + '" data-col-id="' + col.id + '" type="number" min="0" step="0.1" placeholder="f.eks. ' + (col.columnType === 'measurement' && chartType === 'footwear' ? '26' : '88') + '" style="border:1px solid #ccc;border-radius:4px;padding:6px 10px;font-size:14px;width:100%;box-sizing:border-box;" />';
+      html += '<input id="sc-input-' + blockId + '-' + col.id + '" data-col-id="' + col.id + '" type="number" min="0" step="0.1" placeholder="e.g. ' + (chartType === 'footwear' ? '26' : '88') + '" style="border:1px solid #ccc;border-radius:4px;padding:6px 10px;font-size:14px;width:100%;box-sizing:border-box;" />';
       html += '</div>';
     });
 
-    html += '<button id="sc-find-btn-' + blockId + '" type="button" style="background:#000;color:#fff;border:none;border-radius:4px;padding:8px 18px;font-size:14px;cursor:pointer;white-space:nowrap;align-self:flex-end;">Find størrelse</button>';
+    html += '<button id="sc-find-btn-' + blockId + '" type="button" style="background:#000;color:#fff;border:none;border-radius:4px;padding:8px 18px;font-size:14px;cursor:pointer;white-space:nowrap;align-self:flex-end;">Find size</button>';
     html += '</div></div>';
     return html;
   }
@@ -276,7 +286,7 @@
     });
 
     if (Object.keys(inputs).length === 0) {
-      showResult(null, 'Indtast dine mål for at finde din størrelse.');
+      showResult(null, 'Enter your measurements to find your size.');
       return;
     }
 
@@ -306,9 +316,9 @@
           var cell = (bestRow.cells || []).find(function(c) { return c.columnId === col.id; });
           return esc(col.name) + ': <strong>' + esc((cell && cell.value) || '–') + '</strong>';
         });
-        showResult(bestRow.id, 'Din størrelse er ' + sizeLabels.join(', '));
+        showResult(bestRow.id, 'Your size is ' + sizeLabels.join(', '));
       } else {
-        showResult(null, 'Ingen størrelse matcher de indtastede mål. Prøv et andet mål.');
+        showResult(null, 'No size matches your measurements. Try a different value.');
       }
 
     } else {
@@ -329,7 +339,7 @@
       var maxScore = Math.max.apply(null, scores.map(function(s) { return s.score; }));
 
       if (maxScore === 0) {
-        showResult(null, 'Ingen størrelse matcher præcist. Prøv at justere dine mål.');
+        showResult(null, 'No exact size match. Try adjusting your measurements.');
       } else {
         // Among tied rows, pick the largest (last in order)
         var best = scores.filter(function(s) { return s.score === maxScore; }).pop();
@@ -339,8 +349,8 @@
           return esc(col.name) + ': <strong>' + esc((cell && cell.value) || '–') + '</strong>';
         });
         var matchCount = Object.keys(inputs).length;
-        var note = maxScore < matchCount ? ' (' + maxScore + '/' + matchCount + ' mål passer)' : '';
-        showResult(best.row.id, 'Din anbefalede størrelse er ' + sizeLabels.join(', ') + note);
+        var note = maxScore < matchCount ? ' (' + maxScore + '/' + matchCount + ' measurements matched)' : '';
+        showResult(best.row.id, 'Your recommended size is ' + sizeLabels.join(', ') + note);
       }
     }
   }
@@ -368,7 +378,7 @@
     chart.columns.forEach(function(col) {
       var label = esc(col.name);
       if (col.columnType === 'measurement') {
-        label += ' <span style="color:#6d7175;font-weight:normal;">(' + currentUnit + ')</span>';
+        label = esc(col.name) + '<br><span style="color:#6d7175;font-weight:normal;font-size:11px;">(' + currentUnit + ')</span>';
       }
       html += '<th style="padding:8px 12px;border:1px solid #e1e3e5;background:#f6f6f7;text-align:left;white-space:nowrap;">' + label + '</th>';
     });
@@ -384,8 +394,14 @@
       chart.columns.forEach(function(col) {
         var cell = (row.cells || []).find(function(c) { return c.columnId === col.id; });
         var display = '';
-        if (col.columnType === 'measurement' && cell && cell.minValue != null && cell.maxValue != null) {
-          display = toDisplay(cell.minValue) + '–' + toDisplay(cell.maxValue);
+        if (col.columnType === 'measurement' && cell) {
+          if (cell.minValue != null && cell.maxValue != null) {
+            display = toDisplay(cell.minValue) + '–' + toDisplay(cell.maxValue);
+          } else if (cell.value != null && cell.value !== '' && !isNaN(parseFloat(cell.value))) {
+            display = toDisplay(parseFloat(cell.value));
+          } else if (cell.value) {
+            display = esc(cell.value);
+          }
         } else if (cell && cell.value) {
           display = esc(cell.value);
         }
@@ -406,10 +422,23 @@
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  // ── Preload on page ready ──────────────────────────────────────
+  loadChart();
+
   // ── Modal events ───────────────────────────────────────────────
   btn.addEventListener('click', function() {
     modal.style.display = 'flex';
-    loadChart();
+    if (chartData) {
+      renderAll();
+    } else {
+      body.innerHTML = '<p style="color:#6d7175;font-size:14px;">Loading...</p>';
+      // Retry if preload hasn't finished yet
+      var retries = 0;
+      var wait = setInterval(function() {
+        if (chartData) { clearInterval(wait); renderAll(); }
+        if (++retries > 20) { clearInterval(wait); body.innerHTML = '<p style="color:#d72c0d;font-size:14px;">Could not load size guide.</p>'; }
+      }, 100);
+    }
   });
 
   closeBtn.addEventListener('click', function() { modal.style.display = 'none'; });
