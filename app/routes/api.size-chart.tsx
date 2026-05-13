@@ -8,6 +8,29 @@ const CORS = {
   "Access-Control-Max-Age": "86400",
 };
 
+// ─── In-memory cache ──────────────────────────────────────────────────────────
+// TTL: 2 hours. Size charts almost never change after being set up.
+// Cache is per shop+product so each product always gets its own correct chart.
+
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+interface CacheEntry {
+  data: { chart: any; settings: Record<string, string> };
+  expiresAt: number;
+}
+
+const cache = new Map<string, CacheEntry>();
+
+function getCacheKey(shop: string, productId: string | null, productHandle: string | null, tags: string | null, vendor: string | null, productType: string | null) {
+  return `${shop}||${productId || ""}||${productHandle || ""}||${tags || ""}||${vendor || ""}||${productType || ""}`;
+}
+
+export function invalidateCache(shop: string) {
+  for (const key of cache.keys()) {
+    if (key.startsWith(shop + "||")) cache.delete(key);
+  }
+}
+
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS });
@@ -30,6 +53,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   if (!shop) {
     return Response.json({ error: "Missing shop parameter" }, { status: 400, headers: CORS });
+  }
+
+  // ── Cache lookup ──────────────────────────────────────────────────────────
+  const cacheKey = getCacheKey(shop, productIdParam, productHandle, tagsParam, vendor, productType);
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return Response.json(cached.data, { headers: CORS });
   }
 
   // Normalize product ID to GID format
@@ -109,5 +139,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (row.settingValue) settings[row.settingKey] = row.settingValue;
   }
 
-  return Response.json({ chart, settings }, { headers: CORS });
+  const result = { chart, settings };
+
+  // ── Store in cache ────────────────────────────────────────────────────────
+  cache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
+
+  return Response.json(result, { headers: CORS });
 }

@@ -82,10 +82,10 @@
         justify-content: space-between;
         align-items: center;
         padding: 16px 20px;
-        border-bottom: 1px solid {{ block.settings.accent_color | default: '#000000' }}22;
-        background: {{ block.settings.header_bg | default: '#ffffff' }};
+        border-bottom: 1px solid #e1e3e5;
+        background: #ffffff;
       ">
-        <strong id="size-chart-title-{{ block.id }}" style="font-size: 16px; color: {{ block.settings.header_text_color | default: '#1a1a1a' }};">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
+        <strong id="size-chart-title-{{ block.id }}" style="font-size: 16px; color: #1a1a1a;">{{ block.settings.button_text | default: 'Size Guide' }}</strong>
         <div style="display: flex; align-items: center; gap: 12px;">
           <!-- CM/IN toggle -->
           <div id="size-chart-unit-toggle-{{ block.id }}" style="display:none; background:#f1f1f1; border-radius:20px; padding:2px; align-items:center;">
@@ -120,8 +120,6 @@
   var vendor = encodeURIComponent('{{ product.vendor }}');
   var productType = encodeURIComponent('{{ product.type }}');
   var accentColor = '{{ accent }}';
-  var headerBg = '{{ block.settings.header_bg | default: "#ffffff" }}';
-  var headerTextColor = '{{ block.settings.header_text_color | default: "#1a1a1a" }}';
 
   console.log('[Size Chart Block] blockId:', blockId, 'appUrl:', appUrl, 'shop:', shop, 'productHandle:', productHandle);
 
@@ -151,6 +149,34 @@
   var currentUnit = 'cm';
   var chartData = null;
   var CM_TO_IN = 0.393701;
+
+  // ── Apply button style ─────────────────────────────────────────
+  function applyButtonStyle(style, color) {
+    btn.style.textDecoration = 'none';
+    btn.style.border = 'none';
+    btn.style.borderRadius = '0';
+    btn.style.padding = '0';
+    btn.style.fontWeight = 'normal';
+    if (style === 'filled') {
+      btn.style.background = color;
+      btn.style.color = '#fff';
+      btn.style.borderRadius = '4px';
+      btn.style.padding = '10px 20px';
+      btn.style.fontWeight = '600';
+    } else if (style === 'outline') {
+      btn.style.background = 'transparent';
+      btn.style.color = color;
+      btn.style.border = '2px solid ' + color;
+      btn.style.borderRadius = '4px';
+      btn.style.padding = '9px 20px';
+      btn.style.fontWeight = '600';
+    } else {
+      btn.style.background = 'none';
+      btn.style.color = color;
+      btn.style.textDecoration = 'underline';
+      btn.style.textUnderlineOffset = '3px';
+    }
+  }
 
   // ── Unit toggle ────────────────────────────────────────────────
   function setUnit(unit) {
@@ -200,6 +226,15 @@
         if (!data.chart) { btn.style.display = 'none'; return; }
         chartData = data.chart;
         if (chartData.title) titleEl.textContent = chartData.title;
+
+        // Apply settings from app (overrides block defaults)
+        var s = data.settings || {};
+        if (s.accent_color) accentColor = s.accent_color;
+        if (s.button_text) btn.childNodes[btn.childNodes.length - 1].textContent = ' ' + s.button_text;
+        if (s.button_style) applyButtonStyle(s.button_style, accentColor);
+
+        // Apply accent to CM button
+        cmBtn.style.background = accentColor;
 
         var hasMeasurements = (chartData.columns || []).some(function(c) { return c.columnType === 'measurement'; });
         if (hasMeasurements) {
@@ -402,9 +437,9 @@
     chart.columns.forEach(function(col) {
       var label = esc(col.name);
       if (col.columnType === 'measurement') {
-        label = esc(col.name) + '<br><span style="color:#6d7175;font-weight:normal;font-size:11px;">(' + currentUnit + ')</span>';
+        label = esc(col.name) + '<br><span style="color:rgba(255,255,255,0.65);font-weight:normal;font-size:11px;">(' + currentUnit + ')</span>';
       }
-      html += '<th style="padding:8px 12px;border:1px solid #e1e3e5;background:' + accentColor + '14;text-align:left;white-space:nowrap;">' + label + '</th>';
+      html += '<th style="padding:8px 12px;background:' + accentColor + ';color:#fff;font-weight:700;text-align:left;white-space:nowrap;font-size:11px;letter-spacing:0.06em;">' + label + '</th>';
     });
     html += '</tr></thead><tbody>';
 
@@ -481,51 +516,6 @@
 {
   "name": "Size Chart Button",
   "target": "section",
-  "settings": [
-    {
-      "type": "header",
-      "content": "Button"
-    },
-    {
-      "type": "text",
-      "id": "button_text",
-      "label": "Button text",
-      "default": "Size Guide"
-    },
-    {
-      "type": "select",
-      "id": "button_style",
-      "label": "Button style",
-      "default": "underline",
-      "options": [
-        { "value": "underline", "label": "Underline link" },
-        { "value": "outline", "label": "Outline button" },
-        { "value": "filled", "label": "Filled button" }
-      ]
-    },
-    {
-      "type": "header",
-      "content": "Colors"
-    },
-    {
-      "type": "color",
-      "id": "accent_color",
-      "label": "Accent color",
-      "info": "Used for buttons, highlights and table header",
-      "default": "#000000"
-    },
-    {
-      "type": "color",
-      "id": "header_bg",
-      "label": "Modal header background",
-      "default": "#ffffff"
-    },
-    {
-      "type": "color",
-      "id": "header_text_color",
-      "label": "Modal header text color",
-      "default": "#1a1a1a"
-    }
-  ]
+  "settings": []
 }
 {% endschema %}

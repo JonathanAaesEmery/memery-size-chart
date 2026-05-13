@@ -16,18 +16,27 @@ const CHART_TYPES = [
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const startTime = Date.now();
   const { session } = await authenticate.admin(request);
+  const shop = session.shop;
 
   const queryStart = Date.now();
-  const charts = await prisma.sizeChart.findMany({
-    where: { shop: session.shop },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, title: true, isActive: true, createdAt: true, _count: { select: { productMappings: true } } },
-  });
+  const [charts, settingsRows] = await Promise.all([
+    prisma.sizeChart.findMany({
+      where: { shop },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, title: true, isActive: true, createdAt: true, _count: { select: { productMappings: true } } },
+    }),
+    prisma.globalSettings.findMany({ where: { shop } }),
+  ]);
   const queryTime = Date.now() - queryStart;
   const totalTime = Date.now() - startTime;
 
+  const settings: Record<string, string> = {};
+  for (const row of settingsRows) {
+    if (row.settingValue) settings[row.settingKey] = row.settingValue;
+  }
+
   console.log(`[LOADER] Charts list: query=${queryTime}ms, total=${totalTime}ms (${charts.length} charts)`);
-  return { charts };
+  return { charts, settings };
 };
 
 // ─── Action ──────────────────────────────────────────────────────────────────
@@ -174,7 +183,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── ChartsPage ───────────────────────────────────────────────────────────────
 
 export default function ChartsPage() {
-  const { charts } = useLoaderData<typeof loader>();
+  const { charts, settings } = useLoaderData<typeof loader>();
   const mutFetcher = useFetcher();
   const [editingId, setEditingId] = React.useState<null | "new" | string>(null);
 
@@ -186,7 +195,7 @@ export default function ChartsPage() {
   }, [mutFetcher.data?.newChartId]); // eslint-disable-line
 
   if (editingId !== null) {
-    return <InlineChartEditor editingId={editingId} onEditingIdChange={setEditingId} onBack={() => setEditingId(null)} />;
+    return <InlineChartEditor editingId={editingId} onEditingIdChange={setEditingId} onBack={() => setEditingId(null)} settings={settings} />;
   }
 
   return (
@@ -232,7 +241,7 @@ export default function ChartsPage() {
 
 // ─── InlineChartEditor ────────────────────────────────────────────────────────
 
-function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId: "new" | string; onEditingIdChange: (id: string) => void; onBack: () => void }) {
+function InlineChartEditor({ editingId, onEditingIdChange, onBack, settings }: { editingId: "new" | string; onEditingIdChange: (id: string) => void; onBack: () => void; settings?: Record<string, string> }) {
   const dataFetcher = useFetcher<{ chart: any }>();
   const editorFetcher = useFetcher<any>();
   const [chart, setChart] = React.useState<any>(null);
@@ -360,7 +369,7 @@ function InlineChartEditor({ editingId, onEditingIdChange, onBack }: { editingId
         <div style={{ flex: "0 0 25%", minWidth: 0, display: "flex", flexDirection: "column", height: "calc(100vh - 100px)", position: "sticky", top: 16 }}>
           <p style={{ fontSize: 10, fontWeight: 700, color: "#aaa", letterSpacing: "0.1em", margin: "0 0 6px", textTransform: "uppercase" }}>Customer preview</p>
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-            <ChartPreview chart={chart} />
+            <ChartPreview chart={chart} settings={settings} />
           </div>
         </div>
       </div>
@@ -618,9 +627,11 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
 
 // ─── ChartPreview ─────────────────────────────────────────────────────────────
 
-function ChartPreview({ chart }: { chart: any }) {
+function ChartPreview({ chart, settings }: { chart: any; settings?: Record<string, string> }) {
   const [unit, setUnit] = React.useState("cm");
   const [vals, setVals] = React.useState<Record<string, string>>({});
+
+  const accent = settings?.accent_color || "#1a1a1a";
 
   const inputCols: any[] = chart?.columns?.filter((c: any) => c.customerInputEnabled) || [];
 
@@ -651,10 +662,10 @@ function ChartPreview({ chart }: { chart: any }) {
             </h2>
             {chart?.description && <p style={{ margin: 0, fontSize: 12, color: "#6d7175" }}>{chart.description}</p>}
           </div>
-          <div style={{ display: "flex", border: "1.5px solid #1a1a1a", borderRadius: 5, overflow: "hidden", flexShrink: 0 }}>
+          <div style={{ display: "flex", background: "#f1f1f1", borderRadius: 20, padding: 2, flexShrink: 0 }}>
             {["cm", "in"].map(u => (
               <button key={u} type="button" onClick={() => setUnit(u)}
-                style={{ padding: "5px 10px", fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", background: unit === u ? "#1a1a1a" : "#fff", color: unit === u ? "#fff" : "#1a1a1a" }}>
+                style={{ padding: "4px 12px", fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer", borderRadius: 18, transition: "all 0.15s", background: unit === u ? accent : "transparent", color: unit === u ? "#fff" : "#555" }}>
                 {u.toUpperCase()}
               </button>
             ))}
@@ -688,7 +699,7 @@ function ChartPreview({ chart }: { chart: any }) {
                       </div>
                     ))}
                   </div>
-                  {matchedRowId && <div style={{ marginTop: 9, padding: "6px 10px", background: "#e8f4ff", borderRadius: 6, fontSize: 12, color: "#1a5fa8", fontWeight: 500 }}>✓ Your recommended size is highlighted below</div>}
+                  {matchedRowId && <div style={{ marginTop: 9, padding: "6px 10px", background: `${accent}18`, borderRadius: 6, fontSize: 12, color: accent, fontWeight: 500, border: `1px solid ${accent}33` }}>✓ Your recommended size is highlighted below</div>}
                 </div>
               )}
 
@@ -697,7 +708,7 @@ function ChartPreview({ chart }: { chart: any }) {
                 <div style={{ overflow: "auto" }}>
                   <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                     <thead>
-                      <tr style={{ background: "#1a1a1a" }}>
+                      <tr style={{ background: accent }}>
                         {chart.columns.map((col: any) => (
                           <th key={col.id} style={{ padding: "9px 11px", color: "#fff", fontWeight: 700, textAlign: "left", whiteSpace: "nowrap", fontSize: 10, letterSpacing: "0.07em" }}>
                             {col.name.toUpperCase()}
@@ -711,11 +722,11 @@ function ChartPreview({ chart }: { chart: any }) {
                         : chart.rows.map((row: any, ri: number) => {
                             const isMatch = row.id === matchedRowId;
                             return (
-                              <tr key={row.id} style={{ background: isMatch ? "#dbeeff" : ri % 2 === 0 ? "#fff" : "#fafafa" }}>
+                              <tr key={row.id} style={{ background: isMatch ? `${accent}20` : ri % 2 === 0 ? "#fff" : "#fafafa" }}>
                                 {chart.columns.map((col: any, ci: number) => {
                                   const cell = row.cells?.find((c: any) => c.columnId === col.id);
                                   return (
-                                    <td key={col.id} style={{ padding: "9px 11px", borderBottom: "1px solid #f0f0f0", fontWeight: ci === 0 ? 700 : 400, color: isMatch && ci === 0 ? "#1a5fa8" : "#1a1a1a" }}>
+                                    <td key={col.id} style={{ padding: "9px 11px", borderBottom: "1px solid #f0f0f0", fontWeight: ci === 0 ? 700 : 400, color: isMatch && ci === 0 ? accent : "#1a1a1a" }}>
                                       {cell?.value || "—"}
                                     </td>
                                   );

@@ -4,6 +4,7 @@ import { useLoaderData, useSubmit, useNavigation, useActionData, useSearchParams
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { invalidateCache } from "./api.size-chart";
 
 // ─── Loader ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   // Helper to fetch updated chart (after mutations, return it so frontend doesn't need to reload)
+  // Also invalidates the API cache so storefront visitors get fresh data immediately.
   const getChart = async () => {
     const start = Date.now();
     const chart = await prisma.sizeChart.findFirst({
@@ -68,6 +70,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
     const elapsed = Date.now() - start;
     console.log(`[QUERY] getChart() took ${elapsed}ms (${chart?.rows?.length || 0} rows, ${chart?.rows?.reduce((sum, r) => sum + (r.cells?.length || 0), 0) || 0} cells, ${chart?.images?.length || 0} images)`);
+    invalidateCache(session.shop);
     return chart;
   };
 
