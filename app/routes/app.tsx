@@ -34,6 +34,7 @@ export default function App() {
         <a href={p("/app/charts")} rel="home">Size Charts</a>
         <a href={p("/app/mappings")}>Product Mappings</a>
         <a href={p("/app/fallbacks")}>Fallback Rules</a>
+        <a href={p("/app/translations")}>Translations</a>
         <a href={p("/app/settings")}>Settings</a>
       </ui-nav-menu>
       <Outlet />

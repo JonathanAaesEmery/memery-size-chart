@@ -31,61 +31,19 @@ export function invalidateCache(shop: string) {
   }
 }
 
-// ─── Translations ─────────────────────────────────────────────────────────────
+// ─── English defaults (always the fallback) ───────────────────────────────────
 
-const TRANSLATIONS: Record<string, Record<string, string>> = {
-  en: {
-    findYourSize: "Find your size",
-    findSize: "Find size",
-    enterMeasurements: "Enter your measurements",
-    findPerfectSize: "Find your perfect size.",
-    yourSizeIs: "Your size is",
-    yourRecommendedSizeIs: "Your recommended size is",
-    noSizeMatch: "No size matches your measurements. Try a different value.",
-    noExactMatch: "No exact size match. Try adjusting your measurements.",
-    loading: "Loading...",
-    couldNotLoad: "Could not load size guide.",
-    measurementsMatched: "measurements matched",
-  },
-  dk: {
-    findYourSize: "Find din størrelse",
-    findSize: "Find størrelse",
-    enterMeasurements: "Indtast dine mål",
-    findPerfectSize: "Find din perfekte størrelse.",
-    yourSizeIs: "Din størrelse er",
-    yourRecommendedSizeIs: "Din anbefalede størrelse er",
-    noSizeMatch: "Ingen størrelse matcher dine mål. Prøv en anden værdi.",
-    noExactMatch: "Ingen nøjagtig størrelse. Prøv at justere dine mål.",
-    loading: "Indlæser...",
-    couldNotLoad: "Kunne ikke indlæse størrelsesguiden.",
-    measurementsMatched: "mål matchede",
-  },
-  de: {
-    findYourSize: "Finden Sie Ihre Größe",
-    findSize: "Größe finden",
-    enterMeasurements: "Geben Sie Ihre Maße ein",
-    findPerfectSize: "Finden Sie Ihre perfekte Größe.",
-    yourSizeIs: "Ihre Größe ist",
-    yourRecommendedSizeIs: "Ihre empfohlene Größe ist",
-    noSizeMatch: "Keine Größe passt zu Ihren Maßen. Bitte einen anderen Wert versuchen.",
-    noExactMatch: "Keine genaue Größe gefunden. Bitte Maße anpassen.",
-    loading: "Laden...",
-    couldNotLoad: "Größentabelle konnte nicht geladen werden.",
-    measurementsMatched: "Maße stimmten überein",
-  },
-  fr: {
-    findYourSize: "Trouvez votre taille",
-    findSize: "Trouver la taille",
-    enterMeasurements: "Entrez vos mesures",
-    findPerfectSize: "Trouvez votre taille parfaite.",
-    yourSizeIs: "Votre taille est",
-    yourRecommendedSizeIs: "Votre taille recommandée est",
-    noSizeMatch: "Aucune taille ne correspond à vos mesures. Essayez une autre valeur.",
-    noExactMatch: "Pas de correspondance exacte. Essayez d'ajuster vos mesures.",
-    loading: "Chargement...",
-    couldNotLoad: "Impossible de charger le guide des tailles.",
-    measurementsMatched: "mesures correspondaient",
-  },
+const EN_DEFAULTS: Record<string, string> = {
+  findYourSize: "Find your size",
+  findSize: "Find size",
+  findPerfectSize: "Find your perfect size.",
+  yourSizeIs: "Your size is",
+  yourRecommendedSizeIs: "Your recommended size is",
+  noSizeMatch: "No size matches your measurements. Try a different value.",
+  noExactMatch: "No exact size match. Try adjusting your measurements.",
+  loading: "Loading...",
+  couldNotLoad: "Could not load size guide.",
+  measurementsMatched: "measurements matched",
 };
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -155,17 +113,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     if (tagsParam) {
       tagsParam.split(",").forEach((tag) => {
-        candidates.push({ type: "tag", value: tag.trim().toLowerCase() });
+        const decoded = decodeURIComponent(tag.trim());
+        if (decoded) candidates.push({ type: "tag", value: decoded });
       });
     }
-    if (vendor) candidates.push({ type: "vendor", value: vendor });
-    if (productType) candidates.push({ type: "product_type", value: productType });
+    if (vendor) candidates.push({ type: "vendor", value: decodeURIComponent(vendor) });
+    if (productType) candidates.push({ type: "product_type", value: decodeURIComponent(productType) });
 
     if (candidates.length > 0) {
       const fallback = await prisma.fallbackMapping.findFirst({
         where: {
           shop,
-          OR: candidates.map((c) => ({ mappingType: c.type, mappingValue: c.value })),
+          OR: candidates.map((c) => ({
+            mappingType: c.type,
+            mappingValue: { equals: c.value, mode: "insensitive" },
+          })),
         },
         include: { chart: true },
         orderBy: { priority: "desc" },
@@ -196,8 +158,23 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (row.settingValue) settings[row.settingKey] = row.settingValue;
   }
 
+  // Build translations: start with English defaults, overlay custom translations from DB
   const lang = settings.language || "en";
-  const translations = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  let translations = { ...EN_DEFAULTS };
+  if (lang !== "en") {
+    const customRow = await prisma.globalSettings.findUnique({
+      where: { shop_settingKey: { shop: shop!, settingKey: `translations_${lang}` } },
+    });
+    if (customRow?.settingValue) {
+      try {
+        const custom = JSON.parse(customRow.settingValue);
+        // Only override keys that have a non-empty value
+        for (const key of Object.keys(custom)) {
+          if (custom[key]?.trim()) translations[key] = custom[key].trim();
+        }
+      } catch { /* ignore malformed JSON */ }
+    }
+  }
 
   const result = { chart, settings, translations };
 

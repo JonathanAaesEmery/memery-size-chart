@@ -173,23 +173,12 @@ export default function SettingsPage() {
       <div style={card}>
         <h2 style={sectionTitle}>General</h2>
         <p style={sectionSub}>Default settings for all size charts</p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, maxWidth: 500 }}>
-          <div>
-            <label style={lbl}>Default measurement unit</label>
-            <select ref={unitRef} defaultValue={data.defaultUnit} style={inp}>
-              <option value="cm">Centimeters (cm)</option>
-              <option value="inch">Inches (in)</option>
-            </select>
-          </div>
-          <div>
-            <label style={lbl}>Language</label>
-            <select ref={languageRef} defaultValue={data.language} style={inp}>
-              <option value="en">🇬🇧 English</option>
-              <option value="dk">🇩🇰 Dansk</option>
-              <option value="de">🇩🇪 Deutsch</option>
-              <option value="fr">🇫🇷 Français</option>
-            </select>
-          </div>
+        <div style={{ maxWidth: 300 }}>
+          <label style={lbl}>Default measurement unit</label>
+          <select ref={unitRef} defaultValue={data.defaultUnit} style={inp}>
+            <option value="cm">Centimeters (cm)</option>
+            <option value="inch">Inches (in)</option>
+          </select>
         </div>
       </div>
 
