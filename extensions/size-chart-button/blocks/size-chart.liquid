@@ -12,7 +12,7 @@
   <button
     id="size-chart-btn-{{ block.id }}"
     type="button"
-    style="
+    style="display: none;
       {% if btn_style == 'filled' %}
         background: {{ accent }};
         color: #ffffff;
@@ -261,7 +261,8 @@
       .then(function(r) { return r.json(); })
       .then(function(data) {
         console.log('[Size Chart] Response:', data);
-        if (!data.chart) { btn.style.display = 'none'; return; }
+        if (!data.chart) { return; }
+        btn.style.display = 'inline-flex';
         chartData = data.chart;
         if (chartData.title) titleEl.textContent = chartData.title;
 
