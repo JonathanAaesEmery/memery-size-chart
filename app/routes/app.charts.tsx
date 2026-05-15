@@ -184,7 +184,7 @@ const APP_URL = "https://memery-size-chart-production.up.railway.app";
 
 function CopyLinkButton({ chartId }: { chartId: string }) {
   const [copied, setCopied] = React.useState(false);
-  const url = `${APP_URL}/share/size-chart?id=${chartId}`;
+  const url = `${APP_URL}/s/${chartId}`;
   return (
     <button
       onClick={() => {
