@@ -180,6 +180,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return null;
 };
 
+const APP_URL = "https://memery-size-chart-production.up.railway.app";
+
+function CopyLinkButton({ chartId }: { chartId: string }) {
+  const [copied, setCopied] = React.useState(false);
+  const url = `${APP_URL}/share/size-chart?id=${chartId}`;
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(url).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+      style={btnSecondary}
+      title={url}
+    >
+      {copied ? "✓ Copied!" : "🔗 Share link"}
+    </button>
+  );
+}
+
 // ─── ChartsPage ───────────────────────────────────────────────────────────────
 
 export default function ChartsPage() {
@@ -225,6 +246,9 @@ export default function ChartsPage() {
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => setEditingId(chart.id)} style={btnSecondary}>Edit</button>
                   <button onClick={() => mutFetcher.submit({ intent: "duplicate-chart", id: chart.id }, { method: "post" })} style={btnSecondary}>Duplicate</button>
+                  {chart.isActive && (
+                    <CopyLinkButton chartId={chart.id} />
+                  )}
                   <button onClick={() => mutFetcher.submit({ intent: "toggle", id: chart.id }, { method: "post" })} style={btnSecondary}>
                     {chart.isActive ? "Deactivate" : "Activate"}
                   </button>

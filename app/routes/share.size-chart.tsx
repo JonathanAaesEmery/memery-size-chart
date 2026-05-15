@@ -18,36 +18,14 @@ const CM_TO_IN = 0.393701;
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  const shop = url.searchParams.get("shop");
-  const productHandle = url.searchParams.get("product_handle") || url.searchParams.get("handle");
-  const productIdParam = url.searchParams.get("product_id");
+  const chartId = url.searchParams.get("id");
 
-  if (!shop) {
-    return { chart: null, settings: {} as Record<string, string>, translations: EN_DEFAULTS, error: "Missing shop" };
-  }
-
-  const productId = productIdParam
-    ? productIdParam.startsWith("gid://") ? productIdParam : `gid://shopify/Product/${productIdParam}`
-    : null;
-
-  let mapping: any = null;
-
-  if (productId) {
-    mapping = await prisma.productMapping.findFirst({ where: { shop, productId }, include: { chart: true } });
-    if (!mapping && productIdParam && !productIdParam.startsWith("gid://")) {
-      mapping = await prisma.productMapping.findFirst({ where: { shop, productId: productIdParam }, include: { chart: true } });
-    }
-  }
-  if (!mapping && productHandle) {
-    mapping = await prisma.productMapping.findFirst({ where: { shop, productHandle }, include: { chart: true } });
-  }
-
-  if (!mapping || !mapping.chart.isActive) {
-    return { chart: null, settings: {} as Record<string, string>, translations: EN_DEFAULTS, error: null };
+  if (!chartId) {
+    return { chart: null, settings: {} as Record<string, string>, translations: EN_DEFAULTS, error: "Missing chart id" };
   }
 
   const chart = await prisma.sizeChart.findUnique({
-    where: { id: mapping.chartId },
+    where: { id: chartId },
     include: {
       columns: { orderBy: { displayOrder: "asc" } },
       rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
@@ -55,7 +33,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
   });
 
-  const settingsRows = await prisma.globalSettings.findMany({ where: { shop } });
+  if (!chart || !chart.isActive) {
+    return { chart: null, settings: {} as Record<string, string>, translations: EN_DEFAULTS, error: null };
+  }
+
+  const settingsRows = await prisma.globalSettings.findMany({ where: { shop: chart.shop } });
   const settings: Record<string, string> = {};
   for (const row of settingsRows) {
     if (row.settingValue) settings[row.settingKey] = row.settingValue;
@@ -65,7 +47,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   let translations = { ...EN_DEFAULTS };
   if (lang !== "en") {
     const customRow = await prisma.globalSettings.findUnique({
-      where: { shop_settingKey: { shop, settingKey: `translations_${lang}` } },
+      where: { shop_settingKey: { shop: chart.shop, settingKey: `translations_${lang}` } },
     });
     if (customRow?.settingValue) {
       try {
