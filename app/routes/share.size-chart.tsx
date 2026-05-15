@@ -3,6 +3,9 @@ import type { LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
 import prisma from "../db.server";
 
+const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const shareCache = new Map<string, { data: any; expiresAt: number }>();
+
 const EN_DEFAULTS: Record<string, string> = {
   findYourSize: "Find your size",
   findSize: "Find size",
@@ -23,6 +26,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (!chartId) {
     return { chart: null, settings: {} as Record<string, string>, translations: EN_DEFAULTS, error: "Missing chart id" };
   }
+
+  const cached = shareCache.get(chartId);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
 
   const chart = await prisma.sizeChart.findUnique({
     where: { id: chartId },
@@ -59,7 +65,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
   }
 
-  return { chart, settings, translations, error: null };
+  const result = { chart, settings, translations, error: null };
+  shareCache.set(chartId, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
+  return result;
 }
 
 export default function ShareSizeChart() {

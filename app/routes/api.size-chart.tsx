@@ -31,6 +31,7 @@ export function invalidateCache(shop: string) {
   }
 }
 
+
 // ─── English defaults (always the fallback) ───────────────────────────────────
 
 const EN_DEFAULTS: Record<string, string> = {
