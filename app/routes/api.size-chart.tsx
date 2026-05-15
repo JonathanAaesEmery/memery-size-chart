@@ -87,13 +87,27 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
     if (!from || !to) return Response.json({ error: "Missing from/to" }, { headers: CORS });
-    const [charts, mappings, fallbacks, settings] = await Promise.all([
+
+    // Migrate charts, mappings, fallbacks in parallel
+    const [charts, mappings, fallbacks] = await Promise.all([
       prisma.sizeChart.updateMany({ where: { shop: from }, data: { shop: to } }),
       prisma.productMapping.updateMany({ where: { shop: from }, data: { shop: to } }),
       prisma.fallbackMapping.updateMany({ where: { shop: from }, data: { shop: to } }),
-      prisma.globalSettings.updateMany({ where: { shop: from }, data: { shop: to } }),
     ]);
-    return Response.json({ migrated: { charts: charts.count, mappings: mappings.count, fallbacks: fallbacks.count, settings: settings.count } }, { headers: CORS });
+
+    // Migrate settings carefully: delete conflicting keys in `to`, then move `from` records
+    const fromSettings = await prisma.globalSettings.findMany({ where: { shop: from } });
+    let settingsMoved = 0;
+    for (const s of fromSettings) {
+      await prisma.globalSettings.deleteMany({ where: { shop: to, settingKey: s.settingKey } });
+      await prisma.globalSettings.update({ where: { id: s.id }, data: { shop: to } });
+      settingsMoved++;
+    }
+
+    // Also migrate sessions so admin panel uses correct shop going forward
+    await prisma.session.updateMany({ where: { shop: from }, data: { shop: to } }).catch(() => {});
+
+    return Response.json({ migrated: { charts: charts.count, mappings: mappings.count, fallbacks: fallbacks.count, settings: settingsMoved } }, { headers: CORS });
   }
 
   // ── Cache lookup ──────────────────────────────────────────────────────────
