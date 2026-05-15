@@ -45,7 +45,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }),
   ]);
 
-  return { mappings, charts, products };
+  return { mappings, charts, products, shop: session.shop };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -183,7 +183,20 @@ function SearchableSelect({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MappingsPage() {
-  const { mappings, charts, products } = useLoaderData<typeof loader>();
+  const { mappings, charts, products, shop } = useLoaderData<typeof loader>();
+  const [copiedId, setCopiedId] = React.useState<string | null>(null);
+
+  const appUrl = "https://memery-size-chart-production.up.railway.app";
+
+  function copyShareLink(handle: string | null, productId: string | null) {
+    const param = handle ? `product_handle=${handle}` : `product_id=${productId}`;
+    const url = `${appUrl}/share/size-chart?shop=${shop}&${param}`;
+    navigator.clipboard.writeText(url).then(() => {
+      const key = handle || productId || "";
+      setCopiedId(key);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  }
   const fetcher = useFetcher();
 
   const [selectedChartId, setSelectedChartId] = useState("");
@@ -278,9 +291,18 @@ export default function MappingsPage() {
                       <span>{productTitle || <code style={{ background: "#f6f6f7", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>{mapping.productHandle || mapping.productId || "unknown"}</code>}</span>
                     </div>
                   </div>
-                  <button onClick={() => { if (confirm("Remove this mapping?")) fetcher.submit({ intent: "delete", id: mapping.id }, { method: "post" }); }} style={btnDanger}>
-                    Remove
-                  </button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => copyShareLink(mapping.productHandle, mapping.productId)}
+                      style={btnSecondary}
+                      title="Copy shareable link for customer support"
+                    >
+                      {copiedId === (mapping.productHandle || mapping.productId) ? "✓ Copied!" : "🔗 Copy link"}
+                    </button>
+                    <button onClick={() => { if (confirm("Remove this mapping?")) fetcher.submit({ intent: "delete", id: mapping.id }, { method: "post" }); }} style={btnDanger}>
+                      Remove
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -293,6 +315,7 @@ export default function MappingsPage() {
 
 const lbl: React.CSSProperties = { display: "block", marginBottom: 8, fontWeight: 500, fontSize: 14, color: "#1a1a1a" };
 const btnPrimary: React.CSSProperties = { background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "10px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" };
+const btnSecondary: React.CSSProperties = { background: "#fff", color: "#1a1a1a", border: "1px solid #c9cccf", borderRadius: 6, padding: "8px 14px", fontSize: 13, cursor: "pointer" };
 const btnDanger: React.CSSProperties = { background: "#fff", color: "#d72c0d", border: "1px solid #ffa8a0", borderRadius: 6, padding: "8px 14px", fontSize: 13, cursor: "pointer" };
 
 export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);
