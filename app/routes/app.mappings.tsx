@@ -4,6 +4,7 @@ import { useLoaderData, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { invalidateCache } from "./api.size-chart";
 
 interface ShopifyProduct {
   id: string;
@@ -64,11 +65,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       await prisma.productMapping.create({
         data: { shop: session.shop, chartId, productHandle, productId: normalizedProductId },
       });
+      invalidateCache(session.shop);
     }
   }
 
   if (intent === "delete") {
     await prisma.productMapping.deleteMany({ where: { id: formData.get("id") as string, shop: session.shop } });
+    invalidateCache(session.shop);
   }
 
   return null;

@@ -4,6 +4,7 @@ import { useLoaderData, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { invalidateCache } from "./api.size-chart";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -72,11 +73,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       await prisma.fallbackMapping.create({
         data: { shop: session.shop, chartId, mappingType, mappingValue, priority: 0 },
       });
+      invalidateCache(session.shop);
     }
   }
 
   if (intent === "delete") {
     await prisma.fallbackMapping.deleteMany({ where: { id: formData.get("id") as string, shop: session.shop } });
+    invalidateCache(session.shop);
   }
 
   return null;

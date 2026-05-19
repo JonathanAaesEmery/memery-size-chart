@@ -4,6 +4,7 @@ import { useLoaderData, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { invalidateCache } from "./api.size-chart";
 
 const CHART_TYPES = [
   { value: "simple", label: "Simple table" },
@@ -49,12 +50,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "delete") {
     const id = formData.get("id") as string;
     await prisma.sizeChart.deleteMany({ where: { id, shop: session.shop } });
+    invalidateCache(session.shop);
   }
 
   if (intent === "toggle") {
     const id = formData.get("id") as string;
     const current = await prisma.sizeChart.findFirst({ where: { id, shop: session.shop } });
     if (current) await prisma.sizeChart.update({ where: { id }, data: { isActive: !current.isActive } });
+    invalidateCache(session.shop);
   }
 
   if (intent === "reorder-columns") {
