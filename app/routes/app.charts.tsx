@@ -57,6 +57,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (current) await prisma.sizeChart.update({ where: { id }, data: { isActive: !current.isActive } });
   }
 
+  if (intent === "reorder-columns") {
+    const ids = JSON.parse(formData.get("ids") as string) as string[];
+    await Promise.all(ids.map((id, i) =>
+      prisma.sizeChartColumn.update({ where: { id }, data: { displayOrder: i } })
+    ));
+    return null;
+  }
+
+  if (intent === "reorder-rows") {
+    const ids = JSON.parse(formData.get("ids") as string) as string[];
+    await Promise.all(ids.map((id, i) =>
+      prisma.sizeChartRow.update({ where: { id }, data: { displayOrder: i } })
+    ));
+    return null;
+  }
+
   if (intent === "duplicate-chart") {
     const id = formData.get("id") as string;
     const original = await prisma.sizeChart.findFirst({
@@ -413,8 +429,51 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
   const tableRef = React.useRef<HTMLTableElement>(null);
   const cellsTimeoutRef = React.useRef<NodeJS.Timeout>();
 
-  const cols: any[] = chart?.columns || [];
-  const rows: any[] = chart?.rows || [];
+  // ── Drag-and-drop state ───────────────────────────────────────────────────
+  const [localCols, setLocalCols] = React.useState<any[]>(chart?.columns || []);
+  const [localRows, setLocalRows] = React.useState<any[]>(chart?.rows || []);
+  const [dragOverColId, setDragOverColId] = React.useState<string | null>(null);
+  const [dragOverRowId, setDragOverRowId] = React.useState<string | null>(null);
+  const dragColRef = React.useRef<string | null>(null);
+  const dragRowRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    setLocalCols(chart?.columns || []);
+    setLocalRows(chart?.rows || []);
+  }, [chart]);
+
+  function reorder<T extends { id: string }>(arr: T[], fromId: string, toId: string): T[] {
+    const from = arr.findIndex(x => x.id === fromId);
+    const to = arr.findIndex(x => x.id === toId);
+    if (from === -1 || to === -1 || from === to) return arr;
+    const next = [...arr];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  }
+
+  function dropCol(toId: string) {
+    const fromId = dragColRef.current;
+    setDragOverColId(null);
+    dragColRef.current = null;
+    if (!fromId || fromId === toId) return;
+    const next = reorder(localCols, fromId, toId);
+    setLocalCols(next);
+    sub({ intent: "reorder-columns", ids: JSON.stringify(next.map(c => c.id)) });
+  }
+
+  function dropRow(toId: string) {
+    const fromId = dragRowRef.current;
+    setDragOverRowId(null);
+    dragRowRef.current = null;
+    if (!fromId || fromId === toId) return;
+    const next = reorder(localRows, fromId, toId);
+    setLocalRows(next);
+    sub({ intent: "reorder-rows", ids: JSON.stringify(next.map(r => r.id)) });
+  }
+
+  const cols = localCols;
+  const rows = localRows;
   const hasMatchingCols = cols.some((c: any) => c.customerInputEnabled);
 
   const sub = (data: Record<string, string>) => editorFetcher.submit(data, { method: "post", action: actionUrl });
@@ -503,9 +562,17 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
 
               {/* Column headers */}
               {cols.map((col: any) => (
-                <th key={col.id} style={{ background: col.customerInputEnabled ? HEADER_MATCH_BG : HEADER_BG, border: BORDER, borderTop: "none", padding: 0, verticalAlign: "top", textAlign: "left", minWidth: col.customerInputEnabled ? 150 : 110 }}>
+                <th key={col.id}
+                  draggable
+                  onDragStart={(e) => { dragColRef.current = col.id; e.dataTransfer.effectAllowed = "move"; }}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverColId(col.id); }}
+                  onDragLeave={() => setDragOverColId(null)}
+                  onDrop={() => dropCol(col.id)}
+                  onDragEnd={() => { dragColRef.current = null; setDragOverColId(null); }}
+                  style={{ background: col.customerInputEnabled ? HEADER_MATCH_BG : HEADER_BG, border: BORDER, borderTop: "none", borderLeft: dragOverColId === col.id ? "3px solid #7c3aed" : undefined, padding: 0, verticalAlign: "top", textAlign: "left", minWidth: col.customerInputEnabled ? 150 : 110 }}>
                   {/* Name row + delete */}
                   <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid #d8d8d8" }}>
+                    <span title="Drag to reorder" style={{ cursor: "grab", color: "#bbb", fontSize: 14, padding: "8px 4px 8px 8px", userSelect: "none", flexShrink: 0 }}>⠿</span>
                     <input
                       value={editColId === col.id ? editColName : col.name}
                       onFocus={() => { setEditColId(col.id); setEditColName(col.name); }}
@@ -513,7 +580,7 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
                       onBlur={() => commitColName(col)}
                       onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditColId(null); }}
                       title="Click to rename"
-                      style={{ flex: 1, border: "none", background: "transparent", fontWeight: 700, fontSize: 12, padding: "8px 8px", outline: "none", cursor: "text", color: "#1a1a1a", minWidth: 0 }}
+                      style={{ flex: 1, border: "none", background: "transparent", fontWeight: 700, fontSize: 12, padding: "8px 4px", outline: "none", cursor: "text", color: "#1a1a1a", minWidth: 0 }}
                     />
                     <button type="button" onClick={() => deleteCol(col)} title="Remove column"
                       style={{ border: "none", background: "none", cursor: "pointer", color: "#c0c0c0", padding: "5px 9px", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>×</button>
@@ -581,14 +648,22 @@ function SizeTable({ chart, actionUrl, editorFetcher }: { chart: any; actionUrl:
             {/* Data rows */}
             {rows.map((row: any, ri: number) => (
               <tr key={row.id}
+                draggable
+                onDragStart={(e) => { dragRowRef.current = row.id; e.dataTransfer.effectAllowed = "move"; e.stopPropagation(); }}
+                onDragOver={(e) => { e.preventDefault(); setDragOverRowId(row.id); }}
+                onDragLeave={() => setDragOverRowId(null)}
+                onDrop={(e) => { e.stopPropagation(); dropRow(row.id); }}
+                onDragEnd={() => { dragRowRef.current = null; setDragOverRowId(null); }}
                 onMouseEnter={() => setHoveredRow(row.id)}
-                onMouseLeave={() => setHoveredRow(null)}>
+                onMouseLeave={() => setHoveredRow(null)}
+                style={{ borderTop: dragOverRowId === row.id ? "3px solid #7c3aed" : undefined }}>
 
-                {/* Row number / delete */}
-                <td style={{ background: HEADER_BG, border: INNER_BORDER, borderLeft: "none", width: ROW_NUM_W, textAlign: "center", padding: 0, userSelect: "none", verticalAlign: "middle", height: 42, display: "flex", alignItems: "center", justifyContent: "center" } as React.CSSProperties}>
+                {/* Row number / delete / drag handle */}
+                <td style={{ background: HEADER_BG, border: INNER_BORDER, borderLeft: "none", width: ROW_NUM_W, textAlign: "center", padding: 0, userSelect: "none", verticalAlign: "middle", height: 42, display: "flex", alignItems: "center", justifyContent: "center", gap: 2 } as React.CSSProperties}>
+                  <span style={{ cursor: "grab", color: "#bbb", fontSize: 14, lineHeight: 1, padding: "0 2px" }} title="Drag to reorder">⠿</span>
                   {hoveredRow === row.id
                     ? <button type="button" onClick={() => deleteRow(row.id)} title="Remove row"
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#d72c0d", fontSize: 18, padding: 0, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", lineHeight: 1 }}>×</button>
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#d72c0d", fontSize: 18, padding: 0, fontWeight: 700, lineHeight: 1 }}>×</button>
                     : <span style={{ fontSize: 11, color: "#999", fontWeight: 600, lineHeight: 1 }}>{ri + 1}</span>}
                 </td>
 
