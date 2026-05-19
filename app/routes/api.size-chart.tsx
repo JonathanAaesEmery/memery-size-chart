@@ -66,6 +66,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const tagsParam = url.searchParams.get("tags");
   const vendor = url.searchParams.get("vendor");
   const productType = url.searchParams.get("product_type");
+  const collectionsParam = url.searchParams.get("collections");
 
   if (!shop) {
     return Response.json({ error: "Missing shop parameter" }, { status: 400, headers: CORS });
@@ -111,7 +112,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   // ── Cache lookup ──────────────────────────────────────────────────────────
-  const cacheKey = getCacheKey(shop, productIdParam, productHandle, tagsParam, vendor, productType);
+  const cacheKey = getCacheKey(shop, productIdParam, productHandle, tagsParam, vendor, productType) + `||${collectionsParam || ""}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return Response.json(cached.data, { headers: CORS });
@@ -159,6 +160,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
     if (vendor) candidates.push({ type: "vendor", value: decodeURIComponent(vendor) });
     if (productType) candidates.push({ type: "product_type", value: decodeURIComponent(productType) });
+    if (collectionsParam) {
+      collectionsParam.split(",").forEach((col) => {
+        const decoded = decodeURIComponent(col.trim());
+        if (decoded) candidates.push({ type: "collection", value: decoded });
+      });
+    }
 
     if (candidates.length > 0) {
       console.log(`[size-chart] shop=${shop} searching fallbacks, candidates=`, JSON.stringify(candidates));

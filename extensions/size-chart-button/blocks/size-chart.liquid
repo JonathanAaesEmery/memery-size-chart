@@ -39,7 +39,6 @@
         color: {{ accent }};
       {% endif %}
       cursor: pointer;
-      display: inline-flex;
       align-items: center;
       gap: 6px;
       font-family: inherit;
@@ -96,6 +95,18 @@
             <button id="size-chart-in-btn-{{ block.id }}" type="button" style="border:none;cursor:pointer;border-radius:18px;padding:4px 12px;font-size:12px;font-weight:600;background:transparent;color:#555;transition:all 0.15s;">in</button>
           </div>
           <button
+            id="size-chart-share-{{ block.id }}"
+            type="button"
+            style="display:none;background:none;border:none;cursor:pointer;color:#6d7175;padding:4px;line-height:1;position:relative;"
+            aria-label="Share size chart"
+            title="Copy link to size chart"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </button>
+          <button
             id="size-chart-close-{{ block.id }}"
             type="button"
             style="background:none;border:none;cursor:pointer;font-size:20px;line-height:1;color:#6d7175;padding:4px;"
@@ -114,21 +125,23 @@
 
 <script>
 (function() {
-  var blockId = '{{ block.id }}';
-  var appUrl = '{{ app_url }}';
-  var shop = '{{ shop.permanent_domain }}';
-  var productHandle = '{{ product.handle }}';
+  var blockId = {{ block.id | json }};
+  var appUrl = {{ app_url | json }};
+  var shop = {{ shop.permanent_domain | json }};
+  var productHandle = {{ product.handle | json }};
   var productId = '{{ product.id }}';
   var productTagsArray = {{ product.tags | json }};
-  var vendor = encodeURIComponent('{{ product.vendor }}');
-  var productType = encodeURIComponent('{{ product.type }}');
-  var accentColor = '{{ accent }}';
+  var productCollections = {{ product.collections | map: 'handle' | json }};
+  var vendor = encodeURIComponent({{ product.vendor | json }});
+  var productType = encodeURIComponent({{ product.type | json }});
+  var accentColor = {{ accent | json }};
 
   console.log('[Size Chart Block] blockId:', blockId, 'appUrl:', appUrl, 'shop:', shop, 'productHandle:', productHandle);
 
   var btn = document.getElementById('size-chart-btn-' + blockId);
   var modal = document.getElementById('size-chart-modal-' + blockId);
   var closeBtn = document.getElementById('size-chart-close-' + blockId);
+  var shareBtn = document.getElementById('size-chart-share-' + blockId);
   var body = document.getElementById('size-chart-body-' + blockId);
   var unitToggle = document.getElementById('size-chart-unit-toggle-' + blockId);
   var cmBtn = document.getElementById('size-chart-cm-btn-' + blockId);
@@ -247,12 +260,15 @@
   function loadChart() {
     var tags = Array.isArray(productTagsArray) ? productTagsArray : [];
     var tagsEncoded = tags.map(function(t) { return encodeURIComponent(String(t).trim()); }).filter(Boolean).join(',');
+    var collections = Array.isArray(productCollections) ? productCollections : [];
+    var collectionsEncoded = collections.map(function(c) { return encodeURIComponent(String(c).trim()); }).filter(Boolean).join(',');
     var url = appUrl + '/api/size-chart?shop=' + shop
       + '&product_handle=' + encodeURIComponent(productHandle)
       + '&product_id=' + encodeURIComponent(productId)
       + '&tags=' + tagsEncoded
       + '&vendor=' + vendor
-      + '&product_type=' + productType;
+      + '&product_type=' + productType
+      + '&collections=' + collectionsEncoded;
 
     console.log('[Size Chart] Fetching:', url);
     console.log('[Size Chart] Tags:', tags);
@@ -263,6 +279,7 @@
         console.log('[Size Chart] Response:', data);
         if (!data.chart) { return; }
         btn.style.display = 'inline-flex';
+        if (shareBtn) shareBtn.style.display = 'inline-flex';
         chartData = data.chart;
         if (chartData.title) titleEl.textContent = chartData.title;
 
@@ -563,6 +580,30 @@
   });
 
   closeBtn.addEventListener('click', function() { modal.style.display = 'none'; });
+
+  if (shareBtn) {
+    shareBtn.addEventListener('click', function() {
+      if (!chartData) return;
+      var shareUrl = appUrl + '/s/' + chartData.id;
+      var originalTitle = shareBtn.title;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(shareUrl).then(function() {
+          var tip = document.createElement('span');
+          tip.textContent = 'Link copied!';
+          tip.style.cssText = 'position:absolute;top:calc(100% + 6px);right:0;background:#1a1a1a;color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;white-space:nowrap;pointer-events:none;z-index:10;';
+          shareBtn.appendChild(tip);
+          shareBtn.style.color = accentColor;
+          setTimeout(function() {
+            if (tip.parentNode) tip.parentNode.removeChild(tip);
+            shareBtn.style.color = '#6d7175';
+          }, 2000);
+        });
+      } else {
+        prompt('Copy this link:', shareUrl);
+      }
+    });
+  }
 
   modal.addEventListener('click', function(e) {
     if (e.target === modal) modal.style.display = 'none';
