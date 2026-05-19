@@ -322,6 +322,24 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
+  if (intent === "reorder-columns") {
+    const ids = JSON.parse(form.get("ids") as string) as string[];
+    await Promise.all(ids.map((id, i) =>
+      prisma.sizeChartColumn.update({ where: { id }, data: { displayOrder: i } })
+    ));
+    const chart = await getChart();
+    return { success: "Columns reordered", chart };
+  }
+
+  if (intent === "reorder-rows") {
+    const ids = JSON.parse(form.get("ids") as string) as string[];
+    await Promise.all(ids.map((id, i) =>
+      prisma.sizeChartRow.update({ where: { id }, data: { displayOrder: i } })
+    ));
+    const chart = await getChart();
+    return { success: "Rows reordered", chart };
+  }
+
   const elapsed = Date.now() - actionStart;
   console.log(`[ACTION] ${intent} completed in ${elapsed}ms`);
   return null;
@@ -358,6 +376,53 @@ export default function ChartEditor() {
   const qs = searchParams.toString() ? `?${searchParams.toString()}` : "";
   const detailsRef = React.useRef<HTMLFormElement>(null);
   const cellsRef = React.useRef<HTMLFormElement>(null);
+
+  // ── Local drag state ──────────────────────────────────────────────────────
+  const [localColumns, setLocalColumns] = React.useState(() => chart?.columns || []);
+  const [localRows, setLocalRows] = React.useState(() => chart?.rows || []);
+  const [dragOverColId, setDragOverColId] = React.useState<string | null>(null);
+  const [dragOverRowId, setDragOverRowId] = React.useState<string | null>(null);
+  const dragColId = React.useRef<string | null>(null);
+  const dragRowId = React.useRef<string | null>(null);
+
+  // Sync when server returns updated chart
+  React.useEffect(() => {
+    const src = (actionData as any)?.chart || chart;
+    if (src) {
+      setLocalColumns(src.columns || []);
+      setLocalRows(src.rows || []);
+    }
+  }, [chart, actionData]);
+
+  function reorderArray<T extends { id: string }>(arr: T[], fromId: string, toId: string): T[] {
+    const from = arr.findIndex((x) => x.id === fromId);
+    const to = arr.findIndex((x) => x.id === toId);
+    if (from === -1 || to === -1 || from === to) return arr;
+    const next = [...arr];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  }
+
+  function dropCol(toId: string) {
+    const fromId = dragColId.current;
+    setDragOverColId(null);
+    if (!fromId || fromId === toId) return;
+    const next = reorderArray(localColumns, fromId, toId);
+    setLocalColumns(next);
+    dragColId.current = null;
+    submit({ intent: "reorder-columns", ids: JSON.stringify(next.map((c) => c.id)) }, { method: "post" });
+  }
+
+  function dropRow(toId: string) {
+    const fromId = dragRowId.current;
+    setDragOverRowId(null);
+    if (!fromId || fromId === toId) return;
+    const next = reorderArray(localRows, fromId, toId);
+    setLocalRows(next);
+    dragRowId.current = null;
+    submit({ intent: "reorder-rows", ids: JSON.stringify(next.map((r) => r.id)) }, { method: "post" });
+  }
 
   function del(intent: string, extra: Record<string, string>) {
     if (!confirm("Are you sure?")) return;
@@ -454,10 +519,20 @@ export default function ChartEditor() {
           <h2 style={sectionHeading}>Columns</h2>
           <p style={hintStyle}>Add the columns for your size table. Enable "Customer input" on measurement columns to let customers find their size.</p>
 
-          {chart.columns.length > 0 && (
+          {localColumns.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              {chart.columns.map((col) => (
-                <ColumnCard key={col.id} col={col} submit={submit} busy={busy} onDelete={() => del("delete-column", { columnId: col.id })} />
+              {localColumns.map((col) => (
+                <div
+                  key={col.id}
+                  draggable
+                  onDragStart={() => { dragColId.current = col.id; }}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverColId(col.id); }}
+                  onDragLeave={() => setDragOverColId(null)}
+                  onDrop={() => dropCol(col.id)}
+                  style={{ outline: dragOverColId === col.id ? "2px dashed #8c6af6" : "none", borderRadius: 8 }}
+                >
+                  <ColumnCard col={col} submit={submit} busy={busy} onDelete={() => del("delete-column", { columnId: col.id })} />
+                </div>
               ))}
             </div>
           )}
@@ -474,7 +549,7 @@ export default function ChartEditor() {
             <button onClick={() => submit({ intent: "add-row" }, { method: "post" })} style={btnSecondary}>+ Add row</button>
           </div>
 
-          {chart.rows.length === 0 ? (
+          {localRows.length === 0 ? (
             <p style={{ color: "#6d7175", fontSize: 14 }}>No rows yet. Click "Add row" to start.</p>
           ) : (
             <form ref={cellsRef}>
@@ -483,11 +558,29 @@ export default function ChartEditor() {
                 <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
                   <thead>
                     <tr>
-                      <th style={thStyle}></th>
-                      {chart.columns.map((col) => (
-                        <th key={col.id} style={thStyle}>
+                      {/* row drag handle + delete column */}
+                      <th style={{ ...thStyle, width: 48 }}></th>
+                      {localColumns.map((col) => (
+                        <th
+                          key={col.id}
+                          draggable
+                          onDragStart={() => { dragColId.current = col.id; }}
+                          onDragOver={(e) => { e.preventDefault(); setDragOverColId(col.id); }}
+                          onDragLeave={() => setDragOverColId(null)}
+                          onDrop={() => dropCol(col.id)}
+                          style={{
+                            ...thStyle,
+                            cursor: "grab",
+                            userSelect: "none",
+                            outline: dragOverColId === col.id ? "2px dashed #8c6af6" : "none",
+                            outlineOffset: -2,
+                          }}
+                        >
                           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                            <span>{col.name}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ color: "#aaa", fontSize: 11, lineHeight: 1 }}>⠿</span>
+                              <span>{col.name}</span>
+                            </div>
                             {col.customerInputEnabled && <span style={{ fontSize: 10, color: "#8c6af6", fontWeight: 400 }}>customer input</span>}
                           </div>
                         </th>
@@ -496,7 +589,7 @@ export default function ChartEditor() {
                     {hasMeasurementCols && (
                       <tr>
                         <th style={{ ...thStyle, background: "#faf9fb", fontSize: 10, color: "#6d7175" }}>Min / Max</th>
-                        {chart.columns.map((col) => (
+                        {localColumns.map((col) => (
                           <th key={col.id} style={{ ...thStyle, background: "#faf9fb", fontWeight: 400, fontSize: 10, color: "#6d7175" }}>
                             {col.customerInputEnabled ? "min / max" : "—"}
                           </th>
@@ -505,12 +598,23 @@ export default function ChartEditor() {
                     )}
                   </thead>
                   <tbody>
-                    {chart.rows.map((row) => (
-                      <tr key={row.id}>
-                        <td style={{ ...tdStyle, width: 32 }}>
-                          <button type="button" onClick={() => del("delete-row", { rowId: row.id })} style={deleteDotBtn} title="Delete row">✕</button>
+                    {localRows.map((row) => (
+                      <tr
+                        key={row.id}
+                        draggable
+                        onDragStart={() => { dragRowId.current = row.id; }}
+                        onDragOver={(e) => { e.preventDefault(); setDragOverRowId(row.id); }}
+                        onDragLeave={() => setDragOverRowId(null)}
+                        onDrop={() => dropRow(row.id)}
+                        style={{ outline: dragOverRowId === row.id ? "2px dashed #8c6af6" : "none", outlineOffset: -1 }}
+                      >
+                        <td style={{ ...tdStyle, width: 48 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ cursor: "grab", color: "#bbb", fontSize: 14, lineHeight: 1, userSelect: "none" }} title="Drag to reorder">⠿</span>
+                            <button type="button" onClick={() => del("delete-row", { rowId: row.id })} style={deleteDotBtn} title="Delete row">✕</button>
+                          </div>
                         </td>
-                        {chart.columns.map((col) => {
+                        {localColumns.map((col) => {
                           const cell = row.cells.find((c) => c.columnId === col.id);
                           return (
                             <td key={col.id} style={tdStyle}>
