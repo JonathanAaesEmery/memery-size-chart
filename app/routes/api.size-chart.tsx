@@ -61,6 +61,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");
+  const localeParam = url.searchParams.get("locale");
   const productHandle = url.searchParams.get("product_handle");
   const productIdParam = url.searchParams.get("product_id");
   const tagsParam = url.searchParams.get("tags");
@@ -112,7 +113,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   // ── Cache lookup ──────────────────────────────────────────────────────────
-  const cacheKey = getCacheKey(shop, productIdParam, productHandle, tagsParam, vendor, productType) + `||${collectionsParam || ""}`;
+  const cacheKey = getCacheKey(shop, productIdParam, productHandle, tagsParam, vendor, productType) + `||${collectionsParam || ""}||${localeParam || ""}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return Response.json(cached.data, { headers: CORS });
@@ -212,8 +213,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (row.settingValue) settings[row.settingKey] = row.settingValue;
   }
 
-  // Build UI-string translations
-  const lang = settings.language || "en";
+  // Locale from embed URL takes priority over store language setting
+  // Map Shopify ISO codes to our internal codes where they differ (da → dk)
+  const LOCALE_MAP: Record<string, string> = { da: "dk" };
+  const lang = localeParam
+    ? (LOCALE_MAP[localeParam] || localeParam)
+    : (settings.language || "en");
   let translations = { ...EN_DEFAULTS };
   if (lang !== "en") {
     const customRow = await prisma.globalSettings.findUnique({

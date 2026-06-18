@@ -135,8 +135,9 @@
   var vendor = encodeURIComponent({{ product.vendor | json }});
   var productType = encodeURIComponent({{ product.type | json }});
   var accentColor = {{ accent | json }};
+  var locale = {{ request.locale.iso_code | json }};
 
-  console.log('[Size Chart Block] blockId:', blockId, 'appUrl:', appUrl, 'shop:', shop, 'productHandle:', productHandle);
+  console.log('[Size Chart Block] blockId:', blockId, 'appUrl:', appUrl, 'shop:', shop, 'productHandle:', productHandle, 'locale:', locale);
 
   var btn = document.getElementById('size-chart-btn-' + blockId);
   var modal = document.getElementById('size-chart-modal-' + blockId);
@@ -268,7 +269,8 @@
       + '&tags=' + tagsEncoded
       + '&vendor=' + vendor
       + '&product_type=' + productType
-      + '&collections=' + collectionsEncoded;
+      + '&collections=' + collectionsEncoded
+      + (locale ? '&locale=' + encodeURIComponent(locale) : '');
 
     console.log('[Size Chart] Fetching:', url);
     console.log('[Size Chart] Tags:', tags);
