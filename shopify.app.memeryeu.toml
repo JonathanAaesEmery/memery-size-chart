@@ -2,7 +2,7 @@
 # Fill in CLIENT_ID and the Railway URL after you create the Partner app + Railway service.
 # Deploy with: shopify app deploy --config memeryeu
 
-client_id = "REPLACE_WITH_MEMERYEU_CLIENT_ID"
+client_id = "03bc8b2d037014b30ba569d01d92363c"
 name = "memery-size-chart-eu"
 application_url = "https://memery-size-chart-production-008a.up.railway.app"
 embedded = true

@@ -4,6 +4,7 @@ import { useLoaderData, useFetcher } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import OpenAI from "openai";
 
 // ─── All translatable strings with English defaults ───────────────────────────
 
@@ -68,6 +69,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { success: true, intent };
   }
 
+  if (intent === "auto-translate") {
+    const lang = formData.get("lang") as string;
+    const langLabel = LANGUAGES.find((l) => l.code === lang)?.label ?? lang;
+
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const stringList = TRANSLATION_KEYS.map(
+      ({ key, default: def }) => `${key}: ${def}`
+    ).join("\n");
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a professional UI translator. Translate the given strings into the requested language. Keep translations short and natural — these are UI labels, not full sentences where unnecessary. Reply ONLY with valid JSON: an object where each key maps to its translation. No markdown, no explanation.",
+        },
+        {
+          role: "user",
+          content: `Translate these UI strings into ${langLabel}:\n\n${stringList}`,
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    let translated: Record<string, string> = {};
+    try {
+      translated = JSON.parse(response.choices[0].message.content ?? "{}");
+    } catch {
+      return { error: "Could not parse translation response." };
+    }
+
+    return { autoTranslated: translated, lang };
+  }
+
   if (intent === "save-translations") {
     const lang = formData.get("lang") as string;
     const values: Record<string, string> = {};
@@ -121,6 +158,20 @@ export default function TranslationsPage() {
   const updateValue = (key: string, val: string) => {
     setValues((prev) => ({ ...prev, [activeLang]: { ...prev[activeLang], [key]: val } }));
   };
+
+  const handleAutoTranslate = () => {
+    fetcher.submit({ intent: "auto-translate", lang: activeLang }, { method: "post" });
+  };
+
+  // When auto-translate comes back, merge into local state
+  React.useEffect(() => {
+    if (fetcher.data && "autoTranslated" in fetcher.data && fetcher.data.lang === activeLang) {
+      const translated = fetcher.data.autoTranslated as Record<string, string>;
+      setValues((prev) => ({ ...prev, [activeLang]: { ...prev[activeLang], ...translated } }));
+    }
+  }, [fetcher.data]); // eslint-disable-line
+
+  const isTranslating = fetcher.state !== "idle" && fetcher.formData?.get("intent") === "auto-translate";
 
   const allLanguages = [{ code: "en", label: "🇬🇧 English" }, ...LANGUAGES];
 
@@ -247,10 +298,16 @@ export default function TranslationsPage() {
         </div>
 
         {/* Save */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 20, flexWrap: "wrap" }}>
+          <button onClick={handleAutoTranslate} disabled={isTranslating} style={btnSecondary}>
+            {isTranslating ? "Translating…" : `✨ Auto-translate to ${LANGUAGES.find((l) => l.code === activeLang)?.label}`}
+          </button>
           <button onClick={handleSaveTranslations} style={btnPrimary}>
             Save {LANGUAGES.find((l) => l.code === activeLang)?.label} translations
           </button>
+          {fetcher.data && "error" in fetcher.data && (
+            <span style={{ fontSize: 13, color: "#d72c0d" }}>{fetcher.data.error as string}</span>
+          )}
           {savedTranslations === activeLang && (
             <span style={{ fontSize: 13, color: "#2d6a2d", fontWeight: 500 }}>✓ Saved</span>
           )}
@@ -261,5 +318,6 @@ export default function TranslationsPage() {
 }
 
 const btnPrimary: React.CSSProperties = { background: "#1a1a1a", color: "#fff", border: "none", borderRadius: 6, padding: "10px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer" };
+const btnSecondary: React.CSSProperties = { background: "#fff", color: "#1a1a1a", border: "1px solid #c9cccf", borderRadius: 6, padding: "10px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer" };
 
 export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);

@@ -2,7 +2,7 @@
 # Fill in CLIENT_ID after you create the Partner app.
 # Deploy with: shopify app deploy --config memeryshoes
 
-client_id = "REPLACE_WITH_MEMERYSHOES_CLIENT_ID"
+client_id = "40b13fe10f07985797ee775d1987c8f8"
 name = "memery-size-chart-shoes"
 application_url = "https://courteous-illumination-production-6ae5.up.railway.app"
 embedded = true
