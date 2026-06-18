@@ -79,6 +79,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const intent = formData.get("intent") as string;
 
   if (intent === "translate-all") {
+    try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const charts = await prisma.sizeChart.findMany({
@@ -166,6 +167,10 @@ Omit "description" key if original has none. Omit "instructions" key if original
 
     try { invalidateCache(session.shop); } catch {}
     return { translatedAll: true, chartCount: charts.length, langCount: LANGUAGES.length };
+    } catch (err: any) {
+      console.error("[translate-all] error:", err);
+      return { error: `Translation failed: ${err?.message ?? String(err)}` };
+    }
   }
 
   if (intent === "save-language") {
