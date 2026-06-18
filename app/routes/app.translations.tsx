@@ -50,18 +50,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const activeLangSetting = rows.find((r) => r.settingKey === "language")?.settingValue || "en";
 
-  const [totalCharts, translationCounts] = await Promise.all([
-    prisma.sizeChart.count({ where: { shop } }),
-    Promise.all(
+  const totalCharts = await prisma.sizeChart.count({ where: { shop } });
+
+  let translatedCounts: Record<string, number> = {};
+  try {
+    const chartIds = (await prisma.sizeChart.findMany({ where: { shop }, select: { id: true } })).map((c) => c.id);
+    const counts = await Promise.all(
       LANGUAGES.map(async (lang) => {
-        const count = await prisma.sizeChartTranslation.count({ where: { chartId: { in: (await prisma.sizeChart.findMany({ where: { shop }, select: { id: true } })).map((c) => c.id) }, language: lang.code } });
+        const count = await prisma.sizeChartTranslation.count({
+          where: { chartId: { in: chartIds }, language: lang.code },
+        });
         return { lang: lang.code, count };
       })
-    ),
-  ]);
-
-  const translatedCounts: Record<string, number> = {};
-  for (const { lang, count } of translationCounts) translatedCounts[lang] = count;
+    );
+    for (const { lang, count } of counts) translatedCounts[lang] = count;
+  } catch {
+    // Table doesn't exist yet — migration pending
+  }
 
   return { translations, activeLangSetting, totalCharts, translatedCounts };
 };
@@ -159,7 +164,7 @@ Omit "description" key if original has none. Omit "instructions" key if original
       }
     }
 
-    invalidateCache(session.shop);
+    try { invalidateCache(session.shop); } catch {}
     return { translatedAll: true, chartCount: charts.length, langCount: LANGUAGES.length };
   }
 
