@@ -1,0 +1,31 @@
+# memeryus.myshopify.com — custom app config
+# Fill in CLIENT_ID and the Railway URL after you create the Partner app + Railway service.
+# Deploy with: shopify app deploy --config memeryus
+
+client_id = "642775948a60b14782d0c6e87cc9ae83"
+name = "memery-size-chart-us"
+application_url = "https://memery-size-chart-production.up.railway.app"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+[access_scopes]
+scopes = "read_products"
+
+[auth]
+redirect_urls = [
+  "https://memery-size-chart-production.up.railway.app/api/auth",
+  "https://memery-size-chart-production.up.railway.app/auth/callback"
+]

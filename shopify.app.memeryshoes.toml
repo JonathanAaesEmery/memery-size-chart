@@ -1,0 +1,31 @@
+# memeryshoes.myshopify.com — custom app config
+# Fill in CLIENT_ID after you create the Partner app.
+# Deploy with: shopify app deploy --config memeryshoes
+
+client_id = "REPLACE_WITH_MEMERYSHOES_CLIENT_ID"
+name = "memery-size-chart-shoes"
+application_url = "https://courteous-illumination-production-6ae5.up.railway.app"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+[access_scopes]
+scopes = "read_products"
+
+[auth]
+redirect_urls = [
+  "https://courteous-illumination-production-6ae5.up.railway.app/api/auth",
+  "https://courteous-illumination-production-6ae5.up.railway.app/auth/callback"
+]

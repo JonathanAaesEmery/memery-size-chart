@@ -196,6 +196,160 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { newChartId: newChart.id };
   }
 
+  // ── Export selected charts to a JSON file ──
+  if (intent === "export") {
+    const ids = JSON.parse(formData.get("ids") as string) as string[];
+
+    const charts = await prisma.sizeChart.findMany({
+      where: { shop: session.shop, id: { in: ids } },
+      orderBy: { createdAt: "desc" },
+      include: {
+        columns: { orderBy: { displayOrder: "asc" } },
+        rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
+        images: { orderBy: { displayOrder: "asc" } },
+      },
+    });
+
+    const exportData = {
+      _format: "memery-size-chart-export",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      charts: charts.map((c) => {
+        // Cells reference columns by position, so they survive the new IDs on import
+        const colIndex = new Map(c.columns.map((col, i) => [col.id, i]));
+        return {
+          title: c.title,
+          description: c.description,
+          chartType: c.chartType,
+          defaultUnit: c.defaultUnit,
+          imageLayout: c.imageLayout,
+          instructionsHtml: c.instructionsHtml,
+          isActive: c.isActive,
+          columns: c.columns.map((col, i) => ({
+            name: col.name,
+            columnType: col.columnType,
+            displayOrder: i,
+            isMatchingKey: col.isMatchingKey,
+            customerInputEnabled: col.customerInputEnabled,
+            apparelMeasurementType: col.apparelMeasurementType,
+            inputLabel: col.inputLabel,
+          })),
+          rows: c.rows.map((row, ri) => ({
+            displayOrder: ri,
+            cells: row.cells
+              .filter((cell) => colIndex.has(cell.columnId))
+              .map((cell) => ({
+                columnIndex: colIndex.get(cell.columnId),
+                value: cell.value,
+                minValue: cell.minValue,
+                maxValue: cell.maxValue,
+              })),
+          })),
+          images: c.images.map((img, i) => ({
+            url: img.url,
+            altText: img.altText,
+            displayOrder: i,
+          })),
+        };
+      }),
+    };
+
+    return { exportData };
+  }
+
+  // ── Import charts from an uploaded JSON file ──
+  if (intent === "import") {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(formData.get("payload") as string);
+    } catch {
+      return { error: "Could not read the file — it is not valid JSON." };
+    }
+
+    const incoming = parsed?.charts;
+    if (!Array.isArray(incoming) || incoming.length === 0) {
+      return { error: "No size charts found in this file." };
+    }
+
+    let imported = 0;
+    for (const c of incoming) {
+      await prisma.$transaction(
+        async (tx) => {
+          const created = await tx.sizeChart.create({
+            data: {
+              shop: session.shop,
+              title: c.title ?? "Untitled chart",
+              description: c.description ?? null,
+              chartType: c.chartType ?? "simple",
+              defaultUnit: c.defaultUnit ?? "cm",
+              imageLayout: c.imageLayout ?? "above",
+              instructionsHtml: c.instructionsHtml ?? null,
+              isActive: c.isActive ?? true,
+            },
+          });
+
+          // Columns — create in order so the index map below stays correct
+          const cols = Array.isArray(c.columns) ? c.columns : [];
+          const newColIds: string[] = [];
+          for (let i = 0; i < cols.length; i++) {
+            const col = cols[i];
+            const newCol = await tx.sizeChartColumn.create({
+              data: {
+                chartId: created.id,
+                name: col.name ?? `Column ${i + 1}`,
+                columnType: col.columnType ?? "measurement",
+                displayOrder: i,
+                isMatchingKey: col.isMatchingKey ?? false,
+                customerInputEnabled: col.customerInputEnabled ?? false,
+                apparelMeasurementType: col.apparelMeasurementType ?? null,
+                inputLabel: col.inputLabel ?? null,
+              },
+            });
+            newColIds.push(newCol.id);
+          }
+
+          // Rows + cells (cells map back to columns via columnIndex)
+          const rows = Array.isArray(c.rows) ? c.rows : [];
+          for (let ri = 0; ri < rows.length; ri++) {
+            const row = rows[ri];
+            const newRow = await tx.sizeChartRow.create({
+              data: { chartId: created.id, displayOrder: ri },
+            });
+            const cells = Array.isArray(row.cells) ? row.cells : [];
+            const cellData = cells
+              .filter((cell: any) => typeof cell.columnIndex === "number" && newColIds[cell.columnIndex])
+              .map((cell: any) => ({
+                rowId: newRow.id,
+                columnId: newColIds[cell.columnIndex],
+                value: cell.value ?? null,
+                minValue: cell.minValue ?? null,
+                maxValue: cell.maxValue ?? null,
+              }));
+            if (cellData.length > 0) await tx.sizeChartCell.createMany({ data: cellData });
+          }
+
+          // Images
+          const images = Array.isArray(c.images) ? c.images : [];
+          if (images.length > 0) {
+            await tx.sizeChartImage.createMany({
+              data: images.map((img: any, i: number) => ({
+                chartId: created.id,
+                url: img.url,
+                altText: img.altText ?? null,
+                displayOrder: i,
+              })),
+            });
+          }
+        },
+        { timeout: 30000 },
+      );
+      imported++;
+    }
+
+    invalidateCache(session.shop);
+    return { imported };
+  }
+
   return null;
 };
 
@@ -225,7 +379,10 @@ function CopyLinkButton({ chartId }: { chartId: string }) {
 export default function ChartsPage() {
   const { charts, settings } = useLoaderData<typeof loader>();
   const mutFetcher = useFetcher();
+  const ioFetcher = useFetcher<any>();
   const [editingId, setEditingId] = React.useState<null | "new" | string>(null);
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const fileRef = React.useRef<HTMLInputElement>(null);
 
   // Navigate to duplicated chart when duplication completes
   React.useEffect(() => {
@@ -233,6 +390,54 @@ export default function ChartsPage() {
       setEditingId(mutFetcher.data.newChartId as string);
     }
   }, [mutFetcher.data?.newChartId]); // eslint-disable-line
+
+  // ── Selection helpers ──
+  const allSelected = charts.length > 0 && selected.size === charts.length;
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(charts.map((c) => c.id)));
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  // ── Export: ask the server for the JSON, then download it in the browser ──
+  const exportSelected = () => {
+    const ids = selected.size ? [...selected] : charts.map((c) => c.id);
+    if (ids.length === 0) return;
+    ioFetcher.submit({ intent: "export", ids: JSON.stringify(ids) }, { method: "post" });
+  };
+
+  const exportDoneRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const data = ioFetcher.data;
+    if (data?.exportData && data.exportData.exportedAt !== exportDoneRef.current) {
+      exportDoneRef.current = data.exportData.exportedAt;
+      const blob = new Blob([JSON.stringify(data.exportData, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `size-charts-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  }, [ioFetcher.data]);
+
+  // ── Import: read the chosen file and post its contents ──
+  const onImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      ioFetcher.submit({ intent: "import", payload: reader.result as string }, { method: "post" });
+      if (fileRef.current) fileRef.current.value = "";
+    };
+    reader.readAsText(file);
+  };
+
+  const ioBusy = ioFetcher.state !== "idle";
 
   if (editingId !== null) {
     return <InlineChartEditor editingId={editingId} onEditingIdChange={setEditingId} onBack={() => setEditingId(null)} settings={settings} />;
@@ -244,16 +449,45 @@ export default function ChartsPage() {
         <button onClick={() => setEditingId("new")} style={btnPrimary}>+ Create chart</button>
       </div>
       <s-section>
+        {/* ── Backup toolbar: select, download, upload ── */}
+        <input ref={fileRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{ display: "none" }} />
+        {ioFetcher.data && "imported" in ioFetcher.data && (
+          <div style={bannerStyle("success")}>✓ {ioFetcher.data.imported} chart{ioFetcher.data.imported !== 1 ? "s" : ""} imported.</div>
+        )}
+        {ioFetcher.data && "error" in ioFetcher.data && <div style={bannerStyle("error")}>{ioFetcher.data.error}</div>}
+
+        {charts.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <button type="button" onClick={toggleAll} style={btnSecondary}>
+              {allSelected ? "Deselect all" : "Select charts to download"}
+            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={ioBusy} style={btnSecondary}>
+                ⬆ Upload file
+              </button>
+              <button type="button" onClick={exportSelected} disabled={ioBusy} style={btnPrimary}>
+                ⬇ Download {selected.size ? `${selected.size} selected` : "all"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {charts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "32px 0" }}>
             <p style={{ color: "#6d7175", marginBottom: 16 }}>No size charts yet.</p>
-            <button onClick={() => setEditingId("new")} style={btnPrimary}>Create your first chart</button>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <button onClick={() => setEditingId("new")} style={btnPrimary}>Create your first chart</button>
+              <input ref={fileRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{ display: "none" }} />
+              <button onClick={() => fileRef.current?.click()} disabled={ioBusy} style={btnSecondary}>⬆ Upload a backup file</button>
+            </div>
           </div>
         ) : (
           <div style={{ border: "1px solid #e1e3e5", borderRadius: 12, overflow: "hidden" }}>
             {charts.map((chart, i) => (
-              <div key={chart.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: i < charts.length - 1 ? "1px solid #e1e3e5" : "none", background: "#fff" }}>
-                <div>
+              <div key={chart.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: i < charts.length - 1 ? "1px solid #e1e3e5" : "none", background: selected.has(chart.id) ? "#f6f3ff" : "#fff" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <input type="checkbox" checked={selected.has(chart.id)} onChange={() => toggleOne(chart.id)} style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }} />
+                  <div>
                   <strong style={{ fontSize: 15 }}>{chart.title}</strong>
                   <span style={{ marginLeft: 10, padding: "2px 8px", borderRadius: 10, fontSize: 12, background: chart.isActive ? "#d4edda" : "#f8d7da", color: chart.isActive ? "#155724" : "#721c24" }}>
                     {chart.isActive ? "Active" : "Inactive"}
@@ -261,6 +495,7 @@ export default function ChartsPage() {
                   <span style={{ marginLeft: 10, color: "#6d7175", fontSize: 13 }}>
                     {chart._count.productMappings} product{chart._count.productMappings !== 1 ? "s" : ""}
                   </span>
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => setEditingId(chart.id)} style={btnSecondary}>Edit</button>
