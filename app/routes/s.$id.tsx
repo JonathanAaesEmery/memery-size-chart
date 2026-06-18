@@ -29,7 +29,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const cached = shareCache.get(chartId);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
-  const chart = await prisma.sizeChart.findUnique({
+  const rawChart = await prisma.sizeChart.findUnique({
     where: { id: chartId },
     include: {
       columns: { orderBy: { displayOrder: "asc" } },
@@ -38,11 +38,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
   });
 
-  if (!chart || !chart.isActive) {
+  if (!rawChart || !rawChart.isActive) {
     return { chart: null, settings: {} as Record<string, string>, translations: EN_DEFAULTS, error: null };
   }
 
-  const settingsRows = await prisma.globalSettings.findMany({ where: { shop: chart.shop } });
+  const settingsRows = await prisma.globalSettings.findMany({ where: { shop: rawChart.shop } });
   const settings: Record<string, string> = {};
   for (const row of settingsRows) {
     if (row.settingValue) settings[row.settingKey] = row.settingValue;
@@ -52,7 +52,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   let translations = { ...EN_DEFAULTS };
   if (lang !== "en") {
     const customRow = await prisma.globalSettings.findUnique({
-      where: { shop_settingKey: { shop: chart.shop, settingKey: `translations_${lang}` } },
+      where: { shop_settingKey: { shop: rawChart.shop, settingKey: `translations_${lang}` } },
     });
     if (customRow?.settingValue) {
       try {
@@ -61,6 +61,24 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           if (custom[key]?.trim()) translations[key] = custom[key].trim();
         }
       } catch {}
+    }
+  }
+
+  // Apply chart-content translations
+  let chart: typeof rawChart = rawChart;
+  if (lang !== "en") {
+    const ct = await prisma.sizeChartTranslation.findUnique({
+      where: { chartId_language: { chartId: rawChart.id, language: lang } },
+    });
+    if (ct) {
+      const colNames: Record<string, string> = ct.columnNames ? JSON.parse(ct.columnNames) : {};
+      chart = {
+        ...rawChart,
+        title: ct.title || rawChart.title,
+        description: ct.description ?? rawChart.description,
+        instructionsHtml: ct.instructionsHtml ?? rawChart.instructionsHtml,
+        columns: rawChart.columns.map((col) => ({ ...col, name: colNames[col.id] || col.name })),
+      };
     }
   }
 

@@ -5,6 +5,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import OpenAI from "openai";
+import { invalidateCache } from "./api.size-chart";
 
 // ─── All translatable strings with English defaults ───────────────────────────
 
@@ -49,7 +50,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const activeLangSetting = rows.find((r) => r.settingKey === "language")?.settingValue || "en";
 
-  return { translations, activeLangSetting };
+  const [totalCharts, translationCounts] = await Promise.all([
+    prisma.sizeChart.count({ where: { shop } }),
+    Promise.all(
+      LANGUAGES.map(async (lang) => {
+        const count = await prisma.sizeChartTranslation.count({ where: { chartId: { in: (await prisma.sizeChart.findMany({ where: { shop }, select: { id: true } })).map((c) => c.id) }, language: lang.code } });
+        return { lang: lang.code, count };
+      })
+    ),
+  ]);
+
+  const translatedCounts: Record<string, number> = {};
+  for (const { lang, count } of translationCounts) translatedCounts[lang] = count;
+
+  return { translations, activeLangSetting, totalCharts, translatedCounts };
 };
 
 // ─── Action ───────────────────────────────────────────────────────────────────
@@ -58,6 +72,96 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
+
+  if (intent === "translate-all") {
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const charts = await prisma.sizeChart.findMany({
+      where: { shop: session.shop },
+      include: { columns: { orderBy: { displayOrder: "asc" } } },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (charts.length === 0) return { error: "No charts to translate." };
+
+    const langCodes = LANGUAGES.map((l) => l.code).join(", ");
+
+    const chartLines = charts.map((c, i) => {
+      const cols = c.columns.map((col) => col.name).join(", ");
+      const desc = c.description ? ` | Description: ${c.description}` : "";
+      const instr = c.instructionsHtml
+        ? ` | Instructions (HTML, keep tags): ${c.instructionsHtml.slice(0, 300)}`
+        : "";
+      return `[${i}] Title: ${c.title}${desc}${cols ? ` | Columns: ${cols}` : ""}${instr}`;
+    });
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a professional e-commerce translator. Translate size chart content into multiple languages. Keep translations natural and concise. For Instructions HTML: preserve all HTML tags, only translate text inside them. Reply ONLY with valid JSON in this exact structure — no extra keys, no markdown:
+{
+  "LANG_CODE": [
+    { "title": "...", "description": "...", "columns": ["col1","col2",...], "instructions": "..." }
+  ]
+}
+Omit "description" key if original has none. Omit "instructions" key if original has none. Preserve array order. Languages to produce: ${langCodes}.`,
+        },
+        {
+          role: "user",
+          content: `Translate these size charts:\n\n${chartLines.join("\n")}`,
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    let translated: Record<string, any[]>;
+    try {
+      translated = JSON.parse(response.choices[0].message.content ?? "{}");
+    } catch {
+      return { error: "Could not parse translation response from OpenAI." };
+    }
+
+    for (const lang of LANGUAGES) {
+      const langData = translated[lang.code];
+      if (!Array.isArray(langData)) continue;
+
+      for (let i = 0; i < charts.length; i++) {
+        const chart = charts[i];
+        const t = langData[i];
+        if (!t) continue;
+
+        const columnNames: Record<string, string> = {};
+        if (Array.isArray(t.columns)) {
+          chart.columns.forEach((col, ci) => {
+            if (t.columns[ci]) columnNames[col.id] = t.columns[ci];
+          });
+        }
+
+        await prisma.sizeChartTranslation.upsert({
+          where: { chartId_language: { chartId: chart.id, language: lang.code } },
+          update: {
+            title: t.title ?? null,
+            description: t.description ?? null,
+            instructionsHtml: t.instructions ?? null,
+            columnNames: Object.keys(columnNames).length ? JSON.stringify(columnNames) : null,
+          },
+          create: {
+            chartId: chart.id,
+            language: lang.code,
+            title: t.title ?? null,
+            description: t.description ?? null,
+            instructionsHtml: t.instructions ?? null,
+            columnNames: Object.keys(columnNames).length ? JSON.stringify(columnNames) : null,
+          },
+        });
+      }
+    }
+
+    invalidateCache(session.shop);
+    return { translatedAll: true, chartCount: charts.length, langCount: LANGUAGES.length };
+  }
 
   if (intent === "save-language") {
     const language = formData.get("language") as string;
@@ -126,8 +230,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function TranslationsPage() {
-  const { translations, activeLangSetting } = useLoaderData<typeof loader>();
+  const { translations, activeLangSetting, totalCharts, translatedCounts } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
+  const bulkFetcher = useFetcher<any>();
   const [activeLang, setActiveLang] = useState("dk");
   const [storeLanguage, setStoreLanguage] = useState(activeLangSetting);
   const [savedLang, setSavedLang] = useState(false);
@@ -184,6 +289,52 @@ export default function TranslationsPage() {
         <s-paragraph>
           Set your store language, then fill in translations for that language. Leave a field blank to fall back to English.
         </s-paragraph>
+      </s-section>
+
+      {/* ── Bulk chart translation ── */}
+      <s-section heading="Translate all size charts">
+        <p style={{ fontSize: 13, color: "#6d7175", marginTop: 0, marginBottom: 16 }}>
+          Automatically translates every chart's title, description, column names and instructions into all languages at once using AI.
+        </p>
+
+        {/* Status per language */}
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+          {LANGUAGES.map((lang) => {
+            const count = translatedCounts[lang.code] ?? 0;
+            const done = totalCharts > 0 && count >= totalCharts;
+            return (
+              <div key={lang.code} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 20, background: done ? "#d4edda" : "#f6f6f7", border: `1px solid ${done ? "#a8d5a8" : "#e1e3e5"}`, fontSize: 13 }}>
+                <span>{lang.label}</span>
+                <span style={{ color: done ? "#155724" : "#6d7175", fontWeight: 600 }}>
+                  {count}/{totalCharts} {done ? "✓" : ""}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {bulkFetcher.data && "translatedAll" in bulkFetcher.data && (
+          <div style={{ padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13, background: "#f1faf1", color: "#1a6b1a", border: "1px solid #a8d5a8" }}>
+            ✓ Translated {bulkFetcher.data.chartCount} charts into {bulkFetcher.data.langCount} languages.
+          </div>
+        )}
+        {bulkFetcher.data && "error" in bulkFetcher.data && (
+          <div style={{ padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13, background: "#fff4f4", color: "#d72c0d", border: "1px solid #f9c0b9" }}>
+            {bulkFetcher.data.error}
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={bulkFetcher.state !== "idle" || totalCharts === 0}
+          onClick={() => bulkFetcher.submit({ intent: "translate-all" }, { method: "post" })}
+          style={{ ...btnPrimary, opacity: totalCharts === 0 ? 0.5 : 1 }}
+        >
+          {bulkFetcher.state !== "idle" ? "Translating… (may take ~10 sec)" : `✨ Translate all ${totalCharts} charts to all languages`}
+        </button>
+        {totalCharts === 0 && (
+          <p style={{ marginTop: 8, fontSize: 12, color: "#6d7175" }}>Create some size charts first.</p>
+        )}
       </s-section>
 
       {/* ── Store language ── */}

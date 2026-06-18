@@ -195,25 +195,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return Response.json({ chart: null }, { headers: CORS });
   }
 
-  const chart = await prisma.sizeChart.findUnique({
-    where: { id: mapping.chartId },
-    include: {
-      columns: { orderBy: { displayOrder: "asc" } },
-      rows: {
-        orderBy: { displayOrder: "asc" },
-        include: { cells: true },
+  const [rawChart, settingsRows] = await Promise.all([
+    prisma.sizeChart.findUnique({
+      where: { id: mapping.chartId },
+      include: {
+        columns: { orderBy: { displayOrder: "asc" } },
+        rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
+        images: { orderBy: { displayOrder: "asc" } },
       },
-      images: { orderBy: { displayOrder: "asc" } },
-    },
-  });
+    }),
+    prisma.globalSettings.findMany({ where: { shop } }),
+  ]);
 
-  const settingsRows = await prisma.globalSettings.findMany({ where: { shop } });
   const settings: Record<string, string> = {};
   for (const row of settingsRows) {
     if (row.settingValue) settings[row.settingKey] = row.settingValue;
   }
 
-  // Build translations: start with English defaults, overlay custom translations from DB
+  // Build UI-string translations
   const lang = settings.language || "en";
   let translations = { ...EN_DEFAULTS };
   if (lang !== "en") {
@@ -223,11 +222,28 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (customRow?.settingValue) {
       try {
         const custom = JSON.parse(customRow.settingValue);
-        // Only override keys that have a non-empty value
         for (const key of Object.keys(custom)) {
           if (custom[key]?.trim()) translations[key] = custom[key].trim();
         }
       } catch { /* ignore malformed JSON */ }
+    }
+  }
+
+  // Apply chart-content translations (title, description, instructions, column names)
+  let chart: typeof rawChart = rawChart;
+  if (lang !== "en" && rawChart) {
+    const ct = await prisma.sizeChartTranslation.findUnique({
+      where: { chartId_language: { chartId: rawChart.id, language: lang } },
+    });
+    if (ct) {
+      const colNames: Record<string, string> = ct.columnNames ? JSON.parse(ct.columnNames) : {};
+      chart = {
+        ...rawChart,
+        title: ct.title || rawChart.title,
+        description: ct.description ?? rawChart.description,
+        instructionsHtml: ct.instructionsHtml ?? rawChart.instructionsHtml,
+        columns: rawChart.columns.map((col) => ({ ...col, name: colNames[col.id] || col.name })),
+      };
     }
   }
 
