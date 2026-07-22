@@ -1,0 +1,24 @@
+{
+  "blocks": {
+    "size-chart": {
+      "name": "Size Chart Button",
+      "settings": {
+        "button_text": {
+          "label": "Button text",
+          "default": "Size Guide"
+        },
+        "accent_color": {
+          "label": "Accent color"
+        },
+        "button_style": {
+          "label": "Button style",
+          "options": {
+            "underline": "Underline link",
+            "outline": "Outline button",
+            "filled": "Filled button"
+          }
+        }
+      }
+    }
+  }
+}

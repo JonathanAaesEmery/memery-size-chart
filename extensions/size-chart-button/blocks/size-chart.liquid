@@ -619,8 +619,32 @@
 
 {% schema %}
 {
-  "name": "Size Chart Button",
+  "name": "t:blocks.size-chart.name",
   "target": "section",
-  "settings": []
+  "settings": [
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "t:blocks.size-chart.settings.button_text.label",
+      "default": "t:blocks.size-chart.settings.button_text.default"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "t:blocks.size-chart.settings.accent_color.label",
+      "default": "#000000"
+    },
+    {
+      "type": "select",
+      "id": "button_style",
+      "label": "t:blocks.size-chart.settings.button_style.label",
+      "options": [
+        { "value": "underline", "label": "t:blocks.size-chart.settings.button_style.options.underline" },
+        { "value": "outline", "label": "t:blocks.size-chart.settings.button_style.options.outline" },
+        { "value": "filled", "label": "t:blocks.size-chart.settings.button_style.options.filled" }
+      ],
+      "default": "underline"
+    }
+  ]
 }
 {% endschema %}
