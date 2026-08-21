@@ -75,8 +75,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       chart = {
         ...rawChart,
         title: ct.title || rawChart.title,
-        description: ct.description ?? rawChart.description,
-        instructionsHtml: ct.instructionsHtml ?? rawChart.instructionsHtml,
+        description: ct.description || rawChart.description,
+        instructionsHtml: ct.instructionsHtml || rawChart.instructionsHtml,
         columns: rawChart.columns.map((col) => ({ ...col, name: colNames[col.id] || col.name })),
       };
     }

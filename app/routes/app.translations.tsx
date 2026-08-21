@@ -92,76 +92,91 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const langCodes = LANGUAGES.map((l) => l.code).join(", ");
 
-    const chartLines = charts.map((c, i) => {
-      const cols = c.columns.map((col) => col.name).join(", ");
-      const desc = c.description ? ` | Description: ${c.description}` : "";
-      const instr = c.instructionsHtml
-        ? ` | Instructions (HTML, keep tags): ${c.instructionsHtml.slice(0, 300)}`
-        : "";
-      return `[${i}] Title: ${c.title}${desc}${cols ? ` | Columns: ${cols}` : ""}${instr}`;
-    });
+    // Translate in small batches — a single prompt covering every chart in every
+    // language is unreliable at scale (GPT-4o-mini silently drops fields once the
+    // JSON response gets large), so a handful of charts per call keeps output complete.
+    const BATCH_SIZE = 5;
+    const batches: (typeof charts)[] = [];
+    for (let i = 0; i < charts.length; i += BATCH_SIZE) {
+      batches.push(charts.slice(i, i + BATCH_SIZE));
+    }
 
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `You are a professional e-commerce translator. Translate size chart content into multiple languages. Keep translations natural and concise. For Instructions HTML: preserve all HTML tags, only translate text inside them. Reply ONLY with valid JSON in this exact structure — no extra keys, no markdown:
+    for (const batch of batches) {
+      const chartLines = batch.map((c, i) => {
+        const cols = c.columns.map((col) => col.name).join(", ");
+        const desc = c.description ? ` | Description: ${c.description}` : "";
+        const instr = c.instructionsHtml
+          ? ` | Instructions (HTML, keep tags): ${c.instructionsHtml.slice(0, 300)}`
+          : "";
+        return `[${i}] Title: ${c.title}${desc}${cols ? ` | Columns: ${cols}` : ""}${instr}`;
+      });
+
+      const response = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are a professional e-commerce translator. Translate size chart content into multiple languages. Keep translations natural and concise. For Instructions HTML: preserve all HTML tags, only translate text inside them. Reply ONLY with valid JSON in this exact structure — no extra keys, no markdown:
 {
   "LANG_CODE": [
     { "title": "...", "description": "...", "columns": ["col1","col2",...], "instructions": "..." }
   ]
 }
-Omit "description" key if original has none. Omit "instructions" key if original has none. Preserve array order. Languages to produce: ${langCodes}.`,
-        },
-        {
-          role: "user",
-          content: `Translate these size charts:\n\n${chartLines.join("\n")}`,
-        },
-      ],
-      response_format: { type: "json_object" },
-    });
+Every chart in the input MUST have a corresponding entry at the same array index in every language, even if it means repeating short text. Omit "description" key only if the original chart has no description at all. Omit "instructions" key only if the original chart has no instructions at all. Preserve array order. Languages to produce: ${langCodes}.`,
+          },
+          {
+            role: "user",
+            content: `Translate these size charts:\n\n${chartLines.join("\n")}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
 
-    let translated: Record<string, any[]>;
-    try {
-      translated = JSON.parse(response.choices[0].message.content ?? "{}");
-    } catch {
-      return { error: "Could not parse translation response from OpenAI." };
-    }
+      let translated: Record<string, any[]>;
+      try {
+        translated = JSON.parse(response.choices[0].message.content ?? "{}");
+      } catch {
+        return { error: "Could not parse translation response from OpenAI." };
+      }
 
-    for (const lang of LANGUAGES) {
-      const langData = translated[lang.code];
-      if (!Array.isArray(langData)) continue;
+      for (const lang of LANGUAGES) {
+        const langData = translated[lang.code];
+        if (!Array.isArray(langData)) continue;
 
-      for (let i = 0; i < charts.length; i++) {
-        const chart = charts[i];
-        const t = langData[i];
-        if (!t) continue;
+        for (let i = 0; i < batch.length; i++) {
+          const chart = batch[i];
+          const t = langData[i];
+          if (!t) continue;
 
-        const columnNames: Record<string, string> = {};
-        if (Array.isArray(t.columns)) {
-          chart.columns.forEach((col, ci) => {
-            if (t.columns[ci]) columnNames[col.id] = t.columns[ci];
+          const columnNames: Record<string, string> = {};
+          if (Array.isArray(t.columns)) {
+            chart.columns.forEach((col, ci) => {
+              if (t.columns[ci]?.trim()) columnNames[col.id] = t.columns[ci].trim();
+            });
+          }
+
+          const title = typeof t.title === "string" && t.title.trim() ? t.title.trim() : null;
+          const description = typeof t.description === "string" && t.description.trim() ? t.description.trim() : null;
+          const instructionsHtml = typeof t.instructions === "string" && t.instructions.trim() ? t.instructions.trim() : null;
+
+          await prisma.sizeChartTranslation.upsert({
+            where: { chartId_language: { chartId: chart.id, language: lang.code } },
+            update: {
+              title,
+              description,
+              instructionsHtml,
+              columnNames: Object.keys(columnNames).length ? JSON.stringify(columnNames) : null,
+            },
+            create: {
+              chartId: chart.id,
+              language: lang.code,
+              title,
+              description,
+              instructionsHtml,
+              columnNames: Object.keys(columnNames).length ? JSON.stringify(columnNames) : null,
+            },
           });
         }
-
-        await prisma.sizeChartTranslation.upsert({
-          where: { chartId_language: { chartId: chart.id, language: lang.code } },
-          update: {
-            title: t.title ?? null,
-            description: t.description ?? null,
-            instructionsHtml: t.instructions ?? null,
-            columnNames: Object.keys(columnNames).length ? JSON.stringify(columnNames) : null,
-          },
-          create: {
-            chartId: chart.id,
-            language: lang.code,
-            title: t.title ?? null,
-            description: t.description ?? null,
-            instructionsHtml: t.instructions ?? null,
-            columnNames: Object.keys(columnNames).length ? JSON.stringify(columnNames) : null,
-          },
-        });
       }
     }
 
