@@ -7,6 +7,16 @@ import prisma from "../db.server";
 import OpenAI from "openai";
 import { invalidateCache } from "./api.size-chart";
 
+// Rich-text editors (Notion, Google Docs, etc.) often paste HTML with a huge
+// inline style attribute repeated on every single tag. That bloat can turn a
+// 7-line instructions block into 25k+ characters, which both blows the AI
+// translation budget and gets silently truncated mid-tag before any real
+// content is reached. Strip attributes before translating — only the tag
+// structure and text matter for a size-chart instructions block.
+function stripHtmlAttrs(html: string): string {
+  return html.replace(/<([a-z0-9]+)(\s+[^>]*)?>/gi, (_m, tag) => `<${tag}>`);
+}
+
 // ─── All translatable strings with English defaults ───────────────────────────
 
 export const TRANSLATION_KEYS: { key: string; label: string; description: string; default: string }[] = [
@@ -95,8 +105,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Translate in small batches — a single prompt covering every chart in every
     // language is unreliable at scale (GPT-4o-mini silently drops fields once the
     // JSON response gets large), so a handful of charts per call keeps output complete.
-    // Kept small because instructionsHtml is sent in full and can be long.
-    const BATCH_SIZE = 3;
+    const BATCH_SIZE = 5;
     const batches: (typeof charts)[] = [];
     for (let i = 0; i < charts.length; i += BATCH_SIZE) {
       batches.push(charts.slice(i, i + BATCH_SIZE));
@@ -106,8 +115,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const chartLines = batch.map((c, i) => {
         const cols = c.columns.map((col) => col.name).join(", ");
         const desc = c.description ? ` | Description: ${c.description}` : "";
-        const instr = c.instructionsHtml
-          ? ` | Instructions (HTML, keep tags): ${c.instructionsHtml.slice(0, 4000)}`
+        const cleanedInstructions = c.instructionsHtml ? stripHtmlAttrs(c.instructionsHtml) : "";
+        const instr = cleanedInstructions
+          ? ` | Instructions (HTML, keep tags): ${cleanedInstructions.slice(0, 4000)}`
           : "";
         return `[${i}] Title: ${c.title}${desc}${cols ? ` | Columns: ${cols}` : ""}${instr}`;
       });
