@@ -63,6 +63,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const totalCharts = await prisma.sizeChart.count({ where: { shop } });
 
   let translatedCounts: Record<string, number> = {};
+  let charts: {
+    id: string;
+    title: string;
+    columns: { id: string; name: string }[];
+    translations: Record<string, { title: string; description: string; instructionsHtml: string; columnNames: Record<string, string> }>;
+  }[] = [];
   try {
     const chartIds = (await prisma.sizeChart.findMany({ where: { shop }, select: { id: true } })).map((c) => c.id);
     const counts = await Promise.all(
@@ -74,11 +80,48 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       })
     );
     for (const { lang, count } of counts) translatedCounts[lang] = count;
+
+    const chartsRaw = await prisma.sizeChart.findMany({
+      where: { shop },
+      select: {
+        id: true,
+        title: true,
+        columns: { select: { id: true, name: true }, orderBy: { displayOrder: "asc" } },
+        translations: { select: { language: true, title: true, description: true, instructionsHtml: true, columnNames: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    charts = chartsRaw.map((c) => ({
+      id: c.id,
+      title: c.title,
+      columns: c.columns,
+      translations: Object.fromEntries(
+        LANGUAGES.map((l) => {
+          const t = c.translations.find((tt) => tt.language === l.code);
+          let columnNames: Record<string, string> = {};
+          try {
+            columnNames = t?.columnNames ? JSON.parse(t.columnNames) : {};
+          } catch {
+            columnNames = {};
+          }
+          return [
+            l.code,
+            {
+              title: t?.title ?? "",
+              description: t?.description ?? "",
+              instructionsHtml: t?.instructionsHtml ?? "",
+              columnNames,
+            },
+          ];
+        })
+      ),
+    }));
   } catch {
     // Table doesn't exist yet — migration pending
   }
 
-  return { translations, activeLangSetting, totalCharts, translatedCounts };
+  return { translations, activeLangSetting, totalCharts, translatedCounts, charts };
 };
 
 // ─── Action ───────────────────────────────────────────────────────────────────
@@ -260,20 +303,87 @@ Every chart in the input MUST have a corresponding entry at the same array index
     return { success: true, intent, lang };
   }
 
+  if (intent === "save-chart-translation") {
+    const chartId = formData.get("chartId") as string;
+    const lang = formData.get("lang") as string;
+
+    // Scope to this shop — chartId comes from a client form, don't trust it blindly.
+    const chart = await prisma.sizeChart.findFirst({ where: { id: chartId, shop: session.shop } });
+    if (!chart) return { error: "Chart not found." };
+
+    const title = (formData.get("title") as string)?.trim() || null;
+    const description = (formData.get("description") as string)?.trim() || null;
+    const instructionsHtml = (formData.get("instructionsHtml") as string)?.trim() || null;
+
+    let columnNames: string | null = null;
+    try {
+      const parsed = JSON.parse((formData.get("columnNames") as string) || "{}");
+      const cleaned = Object.fromEntries(
+        Object.entries(parsed).filter(([, v]) => typeof v === "string" && (v as string).trim())
+      );
+      columnNames = Object.keys(cleaned).length ? JSON.stringify(cleaned) : null;
+    } catch {
+      columnNames = null;
+    }
+
+    await prisma.sizeChartTranslation.upsert({
+      where: { chartId_language: { chartId, language: lang } },
+      update: { title, description, instructionsHtml, columnNames },
+      create: { chartId, language: lang, title, description, instructionsHtml, columnNames },
+    });
+
+    try { invalidateCache(session.shop); } catch {}
+    return { savedChart: true, chartId, lang };
+  }
+
   return null;
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+type ChartEditValues = { title: string; description: string; instructionsHtml: string; columnNames: Record<string, string> };
+
 export default function TranslationsPage() {
-  const { translations, activeLangSetting, totalCharts, translatedCounts } = useLoaderData<typeof loader>();
+  const { translations, activeLangSetting, totalCharts, translatedCounts, charts } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
   const bulkFetcher = useFetcher<any>();
+  const chartFetcher = useFetcher<any>();
   const [activeLang, setActiveLang] = useState("dk");
   const [storeLanguage, setStoreLanguage] = useState(activeLangSetting);
   const [savedLang, setSavedLang] = useState(false);
   const [savedTranslations, setSavedTranslations] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, Record<string, string>>>(translations);
+
+  const [selectedChartId, setSelectedChartId] = useState(charts[0]?.id ?? "");
+  const [chartLang, setChartLang] = useState("dk");
+  const [chartEdits, setChartEdits] = useState<Record<string, ChartEditValues>>({});
+  const [savedChartKey, setSavedChartKey] = useState<string | null>(null);
+
+  const selectedChart = charts.find((c) => c.id === selectedChartId);
+  const editKey = `${selectedChartId}:${chartLang}`;
+  const currentEdit: ChartEditValues =
+    chartEdits[editKey] ?? selectedChart?.translations[chartLang] ?? { title: "", description: "", instructionsHtml: "", columnNames: {} };
+
+  const updateChartField = (field: "title" | "description" | "instructionsHtml", val: string) => {
+    setChartEdits((prev) => ({ ...prev, [editKey]: { ...currentEdit, [field]: val } }));
+  };
+  const updateColumnName = (colId: string, val: string) => {
+    setChartEdits((prev) => ({ ...prev, [editKey]: { ...currentEdit, columnNames: { ...currentEdit.columnNames, [colId]: val } } }));
+  };
+
+  const handleSaveChartTranslation = () => {
+    const formData = new FormData();
+    formData.set("intent", "save-chart-translation");
+    formData.set("chartId", selectedChartId);
+    formData.set("lang", chartLang);
+    formData.set("title", currentEdit.title);
+    formData.set("description", currentEdit.description);
+    formData.set("instructionsHtml", currentEdit.instructionsHtml);
+    formData.set("columnNames", JSON.stringify(currentEdit.columnNames));
+    chartFetcher.submit(formData, { method: "post" });
+    setSavedChartKey(editKey);
+    setTimeout(() => setSavedChartKey(null), 3000);
+  };
 
   const handleSaveLanguage = (lang: string) => {
     setStoreLanguage(lang);
@@ -372,6 +482,109 @@ export default function TranslationsPage() {
           <p style={{ marginTop: 8, fontSize: 12, color: "#6d7175" }}>Create some size charts first.</p>
         )}
       </s-section>
+
+      {/* ── Manual chart translation edit ── */}
+      {charts.length > 0 && (
+        <s-section heading="Edit a chart translation">
+          <p style={{ fontSize: 13, color: "#6d7175", marginTop: 0, marginBottom: 16 }}>
+            Not happy with an AI translation? Pick a chart and language and correct it by hand.
+          </p>
+
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+            <select
+              value={selectedChartId}
+              onChange={(e) => setSelectedChartId(e.target.value)}
+              style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid #c9cccf", fontSize: 13, minWidth: 220 }}
+            >
+              {charts.map((c) => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              {LANGUAGES.map((lang) => (
+                <button
+                  key={lang.code}
+                  type="button"
+                  onClick={() => setChartLang(lang.code)}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 6,
+                    border: `1.5px solid ${chartLang === lang.code ? "#1a1a1a" : "#c9cccf"}`,
+                    background: chartLang === lang.code ? "#1a1a1a" : "#fff",
+                    color: chartLang === lang.code ? "#fff" : "#1a1a1a",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  {lang.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {selectedChart && (
+            <div style={{ border: "1px solid #e1e3e5", borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3d3d3d", marginBottom: 4 }}>Title</label>
+                <input
+                  value={currentEdit.title}
+                  onChange={(e) => updateChartField("title", e.target.value)}
+                  placeholder={selectedChart.title}
+                  style={{ width: "100%", padding: "8px 10px", border: "1px solid #c9cccf", borderRadius: 4, fontSize: 13, boxSizing: "border-box" } as React.CSSProperties}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3d3d3d", marginBottom: 4 }}>Description</label>
+                <textarea
+                  value={currentEdit.description}
+                  onChange={(e) => updateChartField("description", e.target.value)}
+                  rows={2}
+                  style={{ width: "100%", padding: "8px 10px", border: "1px solid #c9cccf", borderRadius: 4, fontSize: 13, boxSizing: "border-box", resize: "vertical" } as React.CSSProperties}
+                />
+              </div>
+
+              {selectedChart.columns.length > 0 && (
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3d3d3d", marginBottom: 4 }}>Column names</label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {selectedChart.columns.map((col) => (
+                      <div key={col.id} style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontSize: 12, color: "#6d7175" }}>{col.name}</span>
+                        <input
+                          value={currentEdit.columnNames[col.id] || ""}
+                          onChange={(e) => updateColumnName(col.id, e.target.value)}
+                          placeholder={col.name}
+                          style={{ padding: "6px 10px", border: "1px solid #c9cccf", borderRadius: 4, fontSize: 13 } as React.CSSProperties}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#3d3d3d", marginBottom: 4 }}>Instructions (HTML)</label>
+                <textarea
+                  value={currentEdit.instructionsHtml}
+                  onChange={(e) => updateChartField("instructionsHtml", e.target.value)}
+                  rows={4}
+                  style={{ width: "100%", padding: "8px 10px", border: "1px solid #c9cccf", borderRadius: 4, fontSize: 12, fontFamily: "monospace", boxSizing: "border-box", resize: "vertical" } as React.CSSProperties}
+                />
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button type="button" onClick={handleSaveChartTranslation} disabled={chartFetcher.state !== "idle"} style={btnPrimary}>
+                  {chartFetcher.state !== "idle" ? "Saving…" : "Save"}
+                </button>
+                {savedChartKey === editKey && <span style={{ fontSize: 13, color: "#2d6a2d", fontWeight: 500 }}>✓ Saved</span>}
+              </div>
+            </div>
+          )}
+        </s-section>
+      )}
 
       {/* ── Store language ── */}
       <s-section heading="Store language">
