@@ -95,7 +95,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Translate in small batches — a single prompt covering every chart in every
     // language is unreliable at scale (GPT-4o-mini silently drops fields once the
     // JSON response gets large), so a handful of charts per call keeps output complete.
-    const BATCH_SIZE = 5;
+    // Kept small because instructionsHtml is sent in full and can be long.
+    const BATCH_SIZE = 3;
     const batches: (typeof charts)[] = [];
     for (let i = 0; i < charts.length; i += BATCH_SIZE) {
       batches.push(charts.slice(i, i + BATCH_SIZE));
@@ -106,7 +107,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const cols = c.columns.map((col) => col.name).join(", ");
         const desc = c.description ? ` | Description: ${c.description}` : "";
         const instr = c.instructionsHtml
-          ? ` | Instructions (HTML, keep tags): ${c.instructionsHtml.slice(0, 300)}`
+          ? ` | Instructions (HTML, keep tags): ${c.instructionsHtml.slice(0, 4000)}`
           : "";
         return `[${i}] Title: ${c.title}${desc}${cols ? ` | Columns: ${cols}` : ""}${instr}`;
       });
