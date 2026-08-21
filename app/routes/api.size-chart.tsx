@@ -73,44 +73,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return Response.json({ error: "Missing shop parameter" }, { status: 400, headers: CORS });
   }
 
-  // ── Debug mode ────────────────────────────────────────────────────────────
-  if (url.searchParams.get("debug") === "1") {
-    const [allMappings, allFallbacks, shopList] = await Promise.all([
-      prisma.productMapping.findMany({ where: { shop }, select: { productHandle: true, productId: true, chartId: true } }),
-      prisma.fallbackMapping.findMany({ where: { shop }, select: { mappingType: true, mappingValue: true, chartId: true } }),
-      prisma.fallbackMapping.findMany({ distinct: ["shop"], select: { shop: true }, take: 20 }),
-    ]);
-    return Response.json({ shopQueried: shop, shopsInDB: shopList.map(s => s.shop), allMappings, allFallbacks, receivedTags: tagsParam, receivedVendor: vendor, receivedProductType: productType }, { headers: CORS });
-  }
-
-  // ── One-time shop migration ───────────────────────────────────────────────
-  // Usage: /api/size-chart?migrate=1&from=OLD.myshopify.com&to=NEW.myshopify.com
-  if (url.searchParams.get("migrate") === "1") {
-    const from = url.searchParams.get("from");
-    const to = url.searchParams.get("to");
-    if (!from || !to) return Response.json({ error: "Missing from/to" }, { headers: CORS });
-
-    // Migrate charts, mappings, fallbacks in parallel
-    const [charts, mappings, fallbacks] = await Promise.all([
-      prisma.sizeChart.updateMany({ where: { shop: from }, data: { shop: to } }),
-      prisma.productMapping.updateMany({ where: { shop: from }, data: { shop: to } }),
-      prisma.fallbackMapping.updateMany({ where: { shop: from }, data: { shop: to } }),
-    ]);
-
-    // Migrate settings carefully: delete conflicting keys in `to`, then move `from` records
-    const fromSettings = await prisma.globalSettings.findMany({ where: { shop: from } });
-    let settingsMoved = 0;
-    for (const s of fromSettings) {
-      await prisma.globalSettings.deleteMany({ where: { shop: to, settingKey: s.settingKey } });
-      await prisma.globalSettings.update({ where: { id: s.id }, data: { shop: to } });
-      settingsMoved++;
-    }
-
-    // Also migrate sessions so admin panel uses correct shop going forward
-    await prisma.session.updateMany({ where: { shop: from }, data: { shop: to } }).catch(() => {});
-
-    return Response.json({ migrated: { charts: charts.count, mappings: mappings.count, fallbacks: fallbacks.count, settings: settingsMoved } }, { headers: CORS });
-  }
+  // NOTE: this route is public and unauthenticated — the storefront calls it on
+  // every product page. It must therefore stay strictly read-only and must never
+  // return data for any shop other than the one in `?shop=`. Two admin-style
+  // escape hatches used to live here (`?debug=1`, which listed every shop in the
+  // database, and `?migrate=1`, which moved one shop's charts, settings AND
+  // sessions — access tokens included — onto another shop). Both were reachable
+  // by anyone on the internet. They have been removed; a shop migration is a
+  // one-off operation that belongs in a maintenance script run against the
+  // database directly, not on a public endpoint.
 
   // ── Cache lookup ──────────────────────────────────────────────────────────
   const cacheKey = getCacheKey(shop, productIdParam, productHandle, tagsParam, vendor, productType) + `||${collectionsParam || ""}||${localeParam || ""}`;
@@ -197,8 +168,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const [rawChart, settingsRows] = await Promise.all([
-    prisma.sizeChart.findUnique({
-      where: { id: mapping.chartId },
+    // Scoped by shop as well as id: the mapping we resolved it from is already
+    // shop-filtered, so this is belt-and-braces against a mapping ever pointing
+    // at another tenant's chart.
+    prisma.sizeChart.findFirst({
+      where: { id: mapping.chartId, shop },
       include: {
         columns: { orderBy: { displayOrder: "asc" } },
         rows: { orderBy: { displayOrder: "asc" }, include: { cells: true } },
@@ -245,8 +219,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       chart = {
         ...rawChart,
         title: ct.title || rawChart.title,
-        description: ct.description ?? rawChart.description,
-        instructionsHtml: ct.instructionsHtml ?? rawChart.instructionsHtml,
+        description: ct.description || rawChart.description,
+        instructionsHtml: ct.instructionsHtml || rawChart.instructionsHtml,
         columns: rawChart.columns.map((col) => ({ ...col, name: colNames[col.id] || col.name })),
       };
     }

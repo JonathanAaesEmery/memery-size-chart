@@ -19,6 +19,11 @@ api_version = "2026-04"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  [webhooks.privacy_compliance]
+  customer_data_request_url = "https://memery-size-chart-production.up.railway.app/webhooks/customers/data_request"
+  customer_deletion_url = "https://memery-size-chart-production.up.railway.app/webhooks/customers/redact"
+  shop_deletion_url = "https://memery-size-chart-production.up.railway.app/webhooks/shop/redact"
+
 [access_scopes]
 scopes = "read_products"
 

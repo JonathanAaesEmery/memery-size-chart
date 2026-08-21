@@ -1,3 +1,33 @@
+# Build context exclusions.
+#
+# The Dockerfile does `COPY . .`, so anything not listed here is baked into an
+# image layer and travels with the image wherever it is pushed or pulled.
+# Deleting a file in a later layer does not remove it from the earlier one.
+
 .cache
 build
 node_modules
+
+# Secrets. These are supplied as environment variables by the platform at
+# runtime; a .env in the build context is a local development convenience and
+# has no business in a published image. Some of these files hold a live
+# SHOPIFY_API_SECRET and a DATABASE_URL with credentials in it.
+.env
+.env.*
+!.env.example
+
+# Git metadata — full history, including anything committed and later removed.
+.git
+.gitignore
+.gitattributes
+
+# Local tooling and editor state
+.shopify
+.vscode
+.idea
+.DS_Store
+
+# Test and build caches that only slow the build down
+.react-router
+coverage
+*.log

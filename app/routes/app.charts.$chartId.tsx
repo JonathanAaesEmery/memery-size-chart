@@ -56,6 +56,26 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return redirect(`/app/charts${url.search}`);
   }
 
+  // ── Ownership gate ──────────────────────────────────────────────────────────
+  // The loader checks that :chartId belongs to the session's shop, but the
+  // action never did, and every mutation below takes its target id straight from
+  // the submitted form. Any merchant with the app installed could therefore edit
+  // or delete another shop's chart by posting its id. Establish ownership once
+  // here, then scope each child mutation by chartId so a column/row/cell/image
+  // id from a different chart matches nothing.
+  //
+  // The empty-string guard matters: Prisma reads `undefined` in a where clause as
+  // "don't filter on this", so an absent chartId would silently turn every
+  // `{ id, chartId }` filter below back into an unscoped `{ id }`.
+  if (!chartId) throw new Response("Not found", { status: 404 });
+  if (chartId !== "new") {
+    const owned = await prisma.sizeChart.findFirst({
+      where: { id: chartId, shop: session.shop },
+      select: { id: true },
+    });
+    if (!owned) throw new Response("Not found", { status: 404 });
+  }
+
   // Helper to fetch updated chart (after mutations, return it so frontend doesn't need to reload)
   // Also invalidates the API cache so storefront visitors get fresh data immediately.
   const getChart = async () => {
@@ -130,13 +150,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const updateData: any = { isMatchingKey, customerInputEnabled, inputLabel, apparelMeasurementType };
     if (name) updateData.name = name;
     if (columnType) updateData.columnType = columnType;
-    await prisma.sizeChartColumn.update({ where: { id: columnId }, data: updateData });
+    // updateMany/deleteMany rather than update/delete so the chartId filter can
+    // be applied — a column id belonging to another chart matches zero rows
+    // instead of being edited.
+    await prisma.sizeChartColumn.updateMany({ where: { id: columnId, chartId }, data: updateData });
     const chart = await getChart();
     return { success: "Column updated", chart };
   }
 
   if (intent === "delete-column") {
-    await prisma.sizeChartColumn.delete({ where: { id: form.get("columnId") as string } });
+    await prisma.sizeChartColumn.deleteMany({
+      where: { id: form.get("columnId") as string, chartId },
+    });
     const chart = await getChart();
     return { success: "Column deleted", chart };
   }
@@ -151,18 +176,31 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   if (intent === "delete-row") {
-    await prisma.sizeChartRow.delete({ where: { id: form.get("rowId") as string } });
+    await prisma.sizeChartRow.deleteMany({
+      where: { id: form.get("rowId") as string, chartId },
+    });
     const chart = await getChart();
     return { success: "Row deleted", chart };
   }
 
   if (intent === "save-cells") {
+    // A cell is addressed by (rowId, columnId), both taken from the form field
+    // name. Neither carries the chart id, so without this check a submitted
+    // rowId/columnId pair from another shop's chart would be written to. Load
+    // the ids that actually belong to this chart and ignore anything else.
+    const [ownRows, ownColumns] = await Promise.all([
+      prisma.sizeChartRow.findMany({ where: { chartId }, select: { id: true } }),
+      prisma.sizeChartColumn.findMany({ where: { chartId }, select: { id: true } }),
+    ]);
+    const rowIds = new Set(ownRows.map((r) => r.id));
+    const columnIds = new Set(ownColumns.map((c) => c.id));
+
     const entries = Array.from(form.entries());
     for (const [key, value] of entries) {
       if (key.startsWith("val-")) {
-        const [, rowId, colId] = key.split("-", 3).concat(key.split("-").slice(3));
         const parts = key.replace("val-", "").split("-");
         const rId = parts[0]; const cId = parts[1];
+        if (!rowIds.has(rId) || !columnIds.has(cId)) continue;
         const minRaw = form.get(`min-${rId}-${cId}`) as string;
         const maxRaw = form.get(`max-${rId}-${cId}`) as string;
         await prisma.sizeChartCell.upsert({
@@ -213,7 +251,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const imageId = form.get("imageId") as string;
     if (!imageId) return { error: "Image ID is required" };
 
-    await prisma.sizeChartImage.delete({ where: { id: imageId } });
+    await prisma.sizeChartImage.deleteMany({ where: { id: imageId, chartId } });
     const chart = await getChart();
     const elapsed = Date.now() - actionStart;
     console.log(`[ACTION] ${intent} completed in ${elapsed}ms`);
@@ -325,7 +363,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (intent === "reorder-columns") {
     const ids = JSON.parse(form.get("ids") as string) as string[];
     await Promise.all(ids.map((id, i) =>
-      prisma.sizeChartColumn.update({ where: { id }, data: { displayOrder: i } })
+      prisma.sizeChartColumn.updateMany({ where: { id, chartId }, data: { displayOrder: i } })
     ));
     const chart = await getChart();
     return { success: "Columns reordered", chart };
@@ -334,7 +372,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (intent === "reorder-rows") {
     const ids = JSON.parse(form.get("ids") as string) as string[];
     await Promise.all(ids.map((id, i) =>
-      prisma.sizeChartRow.update({ where: { id }, data: { displayOrder: i } })
+      prisma.sizeChartRow.updateMany({ where: { id, chartId }, data: { displayOrder: i } })
     ));
     const chart = await getChart();
     return { success: "Rows reordered", chart };
