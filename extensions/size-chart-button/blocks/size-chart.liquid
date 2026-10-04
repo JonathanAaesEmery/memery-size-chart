@@ -256,6 +256,25 @@
     return num % 1 === 0 ? String(num) : num.toFixed(1);
   }
 
+  // Range of a cell in cm: prefer min/max numbers, else parse the label text
+  // (e.g. "22.1 - 22.6" or "24"). Returns null when no number is found.
+  function getRange(cell) {
+    if (!cell) return null;
+    if (cell.minValue != null && cell.maxValue != null) return { min: cell.minValue, max: cell.maxValue };
+    var nums = String(cell.value || '').match(/\d+(?:[.,]\d+)?/g);
+    if (!nums || nums.length === 0) return null;
+    nums = nums.map(function(n) { return parseFloat(n.replace(',', '.')); });
+    return { min: Math.min.apply(null, nums), max: Math.max.apply(null, nums) };
+  }
+
+  // Convert every number inside a text value, keeping the surrounding text
+  function convertText(text) {
+    if (currentUnit !== 'in') return esc(text);
+    return esc(String(text).replace(/\d+(?:[.,]\d+)?/g, function(n) {
+      return (parseFloat(n.replace(',', '.')) * CM_TO_IN).toFixed(1);
+    }));
+  }
+
   function fromInput(val) {
     var num = parseFloat(val);
     if (isNaN(num)) return null;
@@ -447,12 +466,18 @@
 
       for (var i = 0; i < chart.rows.length; i++) {
         var row = chart.rows[i];
-        var cell = (row.cells || []).find(function(c) { return c.columnId === firstInputColId; });
-        if (cell && cell.minValue != null && cell.maxValue != null) {
-          if (customerVal >= cell.minValue && customerVal <= cell.maxValue) {
-            bestRow = row;
-            break;
-          }
+        var range = getRange((row.cells || []).find(function(c) { return c.columnId === firstInputColId; }));
+        if (range && customerVal >= range.min && customerVal <= range.max) {
+          bestRow = row;
+          break;
+        }
+      }
+
+      // Fall in a gap between two rows (e.g. 22.6 → 22.7): use the next size up
+      if (!bestRow) {
+        for (var j = 0; j < chart.rows.length; j++) {
+          var r2 = getRange((chart.rows[j].cells || []).find(function(c) { return c.columnId === firstInputColId; }));
+          if (r2 && customerVal < r2.min) { bestRow = chart.rows[j]; break; }
         }
       }
 
@@ -543,10 +568,8 @@
         if (isConvertible(col) && cell) {
           if (cell.minValue != null && cell.maxValue != null) {
             display = toDisplay(cell.minValue) + '–' + toDisplay(cell.maxValue);
-          } else if (cell.value != null && cell.value !== '' && !isNaN(parseFloat(cell.value))) {
-            display = toDisplay(parseFloat(cell.value));
           } else if (cell.value) {
-            display = esc(cell.value);
+            display = convertText(cell.value);
           }
         } else if (cell && cell.value) {
           display = esc(cell.value);

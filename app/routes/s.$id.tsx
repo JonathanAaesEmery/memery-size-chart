@@ -126,6 +126,22 @@ export default function ShareSizeChart() {
     return unit === "in" ? "e.g. 9.7" : "e.g. 25";
   }
 
+  // Range of a cell in cm: prefer min/max, else parse the label text ("22.1 - 22.6")
+  function getRange(cell: any): { min: number; max: number } | null {
+    if (!cell) return null;
+    if (cell.minValue != null && cell.maxValue != null) return { min: cell.minValue, max: cell.maxValue };
+    const nums = String(cell.value || "").match(/\d+(?:[.,]\d+)?/g);
+    if (!nums) return null;
+    const vals = nums.map((n) => parseFloat(n.replace(",", ".")));
+    return { min: Math.min(...vals), max: Math.max(...vals) };
+  }
+
+  // Convert every number inside a text value, keeping the surrounding text
+  function convertText(text: string): string {
+    if (unit !== "in") return text;
+    return String(text).replace(/\d+(?:[.,]\d+)?/g, (n) => (parseFloat(n.replace(",", ".")) * CM_TO_IN).toFixed(1));
+  }
+
   function runRecommendation() {
     if (!chart) return;
     const inputCols = chart.columns.filter((c: any) => c.customerInputEnabled);
@@ -143,9 +159,16 @@ export default function ShareSizeChart() {
       const val = inputs[firstId];
       let bestRow: any = null;
       for (const row of chart.rows) {
-        const cell = row.cells?.find((c: any) => c.columnId === firstId);
-        if (cell && cell.minValue != null && cell.maxValue != null && val >= cell.minValue && val <= cell.maxValue) {
+        const range = getRange(row.cells?.find((c: any) => c.columnId === firstId));
+        if (range && val >= range.min && val <= range.max) {
           bestRow = row; break;
+        }
+      }
+      // Value falls in a gap between two rows: use the next size up
+      if (!bestRow) {
+        for (const row of chart.rows) {
+          const range = getRange(row.cells?.find((c: any) => c.columnId === firstId));
+          if (range && val < range.min) { bestRow = row; break; }
         }
       }
       if (bestRow) {
@@ -281,7 +304,7 @@ export default function ShareSizeChart() {
                           if (isConvertible(col) && cell) {
                             if (cell.minValue != null && cell.maxValue != null) {
                               display = toDisplay(cell.minValue) + "–" + toDisplay(cell.maxValue);
-                            } else if (cell.value) display = toDisplay(parseFloat(cell.value));
+                            } else if (cell.value) display = convertText(cell.value);
                           } else if (cell?.value) display = cell.value;
                           return (
                             <td key={col.id} style={{ padding: "10px 14px", borderBottom: "1px solid #f0f0f0", fontWeight: ci === 0 ? 700 : 400, color: isHighlight && ci === 0 ? accent : "#1a1a1a" }}>
