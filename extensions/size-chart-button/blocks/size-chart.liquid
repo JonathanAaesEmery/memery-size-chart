@@ -242,6 +242,12 @@
   inBtn.addEventListener('click', function() { setUnit('in'); });
 
   // ── Value conversion ───────────────────────────────────────────
+  // A column converts between cm/in when it is a measurement column OR a
+  // customer-input (matching) column, e.g. foot length typed as a label column.
+  function isConvertible(col) {
+    return col.columnType === 'measurement' || !!col.customerInputEnabled;
+  }
+
   function toDisplay(val) {
     if (val == null) return '';
     var num = parseFloat(val);
@@ -296,7 +302,7 @@
         var defaultUnit = s.default_unit === 'inch' ? 'in' : (s.default_unit || 'cm');
         setUnit(defaultUnit);
 
-        var hasMeasurements = (chartData.columns || []).some(function(c) { return c.columnType === 'measurement'; });
+        var hasMeasurements = (chartData.columns || []).some(isConvertible);
         if (hasMeasurements) {
           unitToggle.style.display = 'flex';
         }
@@ -517,7 +523,7 @@
     html += '<thead><tr>';
     chart.columns.forEach(function(col) {
       var label = esc(col.name);
-      if (col.columnType === 'measurement') {
+      if (isConvertible(col)) {
         label = esc(col.name) + '<br><span style="color:rgba(255,255,255,0.65);font-weight:normal;font-size:11px;">(' + currentUnit + ')</span>';
       }
       html += '<th style="padding:8px 12px;background:' + accentColor + ';color:#fff;font-weight:700;text-align:left;white-space:nowrap;font-size:11px;letter-spacing:0.06em;">' + label + '</th>';
@@ -534,7 +540,7 @@
       chart.columns.forEach(function(col) {
         var cell = (row.cells || []).find(function(c) { return c.columnId === col.id; });
         var display = '';
-        if (col.columnType === 'measurement' && cell) {
+        if (isConvertible(col) && cell) {
           if (cell.minValue != null && cell.maxValue != null) {
             display = toDisplay(cell.minValue) + '–' + toDisplay(cell.maxValue);
           } else if (cell.value != null && cell.value !== '' && !isNaN(parseFloat(cell.value))) {

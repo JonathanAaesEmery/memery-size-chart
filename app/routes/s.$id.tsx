@@ -196,7 +196,9 @@ export default function ShareSizeChart() {
   }
 
   const inputCols = chart.columns.filter((c: any) => c.customerInputEnabled);
-  const hasMeasurements = chart.columns.some((c: any) => c.columnType === "measurement");
+  // Measurement columns and customer-input (matching) columns convert between cm/in
+  const isConvertible = (c: any) => c.columnType === "measurement" || !!c.customerInputEnabled;
+  const hasMeasurements = chart.columns.some(isConvertible);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f6f6f7", fontFamily: "system-ui, -apple-system, sans-serif", padding: "40px 16px" }}>
@@ -261,7 +263,7 @@ export default function ShareSizeChart() {
                     {chart.columns.map((col: any) => (
                       <th key={col.id} style={{ padding: "10px 14px", background: accent, color: "#fff", fontWeight: 700, textAlign: "left", whiteSpace: "nowrap", fontSize: 12, letterSpacing: "0.05em" }}>
                         {col.name.toUpperCase()}
-                        {col.columnType === "measurement" && (
+                        {isConvertible(col) && (
                           <span style={{ display: "block", fontWeight: 400, fontSize: 11, opacity: 0.7 }}>({unit})</span>
                         )}
                       </th>
@@ -276,7 +278,7 @@ export default function ShareSizeChart() {
                         {chart.columns.map((col: any, ci: number) => {
                           const cell = row.cells?.find((c: any) => c.columnId === col.id);
                           let display = "";
-                          if (col.columnType === "measurement" && cell) {
+                          if (isConvertible(col) && cell) {
                             if (cell.minValue != null && cell.maxValue != null) {
                               display = toDisplay(cell.minValue) + "–" + toDisplay(cell.maxValue);
                             } else if (cell.value) display = toDisplay(parseFloat(cell.value));
