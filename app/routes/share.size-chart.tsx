@@ -91,7 +91,8 @@ export default function ShareSizeChart() {
   function fromInput(val: string): number | null {
     const num = parseFloat(val);
     if (isNaN(num)) return null;
-    return unit === "in" ? num / CM_TO_IN : num;
+    // 1 in = 2.54 cm exactly; round to avoid 10 in → 25.39998 missing a 25.4 boundary
+    return unit === "in" ? Math.round(num * 254) / 100 : num;
   }
 
   function getPlaceholder(col: any): string {

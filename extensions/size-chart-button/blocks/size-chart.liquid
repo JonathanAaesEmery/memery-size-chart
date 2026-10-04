@@ -278,7 +278,8 @@
   function fromInput(val) {
     var num = parseFloat(val);
     if (isNaN(num)) return null;
-    if (currentUnit === 'in') return num / CM_TO_IN;
+    // 1 in = 2.54 cm exactly; round to avoid 10 in → 25.39998 missing a 25.4 boundary
+    if (currentUnit === 'in') return Math.round(num * 254) / 100;
     return num;
   }
 
